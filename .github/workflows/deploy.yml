@@ -38,3 +38,4 @@ jobs:
           TSURU_TOKEN: ${{ secrets.TSURU_TOKEN }}
         run: |
           tsuru app-deploy -a bioeng-rpm-app ROOT.war
+# trigger redeploy
