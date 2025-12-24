@@ -39,7 +39,4 @@ jobs:
         run: |
           tsuru app-deploy -a bioeng-rpm-app ROOT.war
 
-      - name: Show app info
-        run: |
-           tsuru app-info -a bioeng-rpm-app
 
