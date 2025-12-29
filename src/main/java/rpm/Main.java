@@ -18,7 +18,7 @@ public class Main {
 
         AlertEngine alertEngine = new AlertEngine();
 
-        // 8 个病人（你可以换成真实数据）
+        // 8 patients (demo data)
         List<Patient> patients = List.of(
                 new Patient("P1", "Patient 1", 34, "Ward A", "p1@hospital.com", "EC1"),
                 new Patient("P2", "Patient 2", 56, "Ward A", "p2@hospital.com", "EC2"),
@@ -30,17 +30,36 @@ public class Main {
                 new Patient("P8", "Patient 8", 45, "Ward D", "p8@hospital.com", "EC8")
         );
 
-        PatientManager pm = new PatientManager(patients, maxSeconds, sampleHz);
+        // IMPORTANT: use the updated constructor that also creates aggregators + history stores
+        PatientManager pm = new PatientManager(patients, maxSeconds, sampleHz, alertEngine);
 
-        // 后台采样：每个病人都生成 sample
+        // Background sampling: each patient gets samples, plus minute aggregation -> history store
         var exec = Executors.newSingleThreadScheduledExecutor();
         exec.scheduleAtFixedRate(() -> {
             long now = System.currentTimeMillis();
+
             for (Patient p : pm.getPatients()) {
-                var sim = pm.simulatorOf(p.patientId());
-                var store = pm.storeOf(p.patientId());
-                store.addSample(sim.nextSample(now));
+                String id = p.patientId();
+
+                var sim = pm.simulatorOf(id);
+                var store = pm.storeOf(id);
+
+                // 1) generate + store real-time sample (for last-n-seconds plots)
+                var sample = sim.nextSample(now);
+                store.addSample(sample);
+
+                // 2) minute aggregation -> 24h history (for View Past Data)
+                var agg = pm.aggregatorOf(id);
+                var result = agg.onSample(sample);
+
+                if (result.minuteRecord() != null) {
+                    pm.historyOf(id).addMinuteRecord(result.minuteRecord());
+                }
+
+                // (optional) if later you implement abnormal events, also store them here:
+                // for (var ev : result.abnormalEvents()) pm.historyOf(id).addAbnormalEvent(ev);
             }
+
         }, 0, samplePeriodMs, TimeUnit.MILLISECONDS);
 
         SwingUtilities.invokeLater(() -> {

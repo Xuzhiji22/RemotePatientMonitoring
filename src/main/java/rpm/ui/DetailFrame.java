@@ -6,6 +6,7 @@ import rpm.model.Patient;
 import rpm.model.VitalSample;
 import rpm.model.VitalType;
 import rpm.sim.Simulator;
+import rpm.sim.SimulationMode;
 
 import javax.swing.*;
 import java.awt.*;
@@ -65,10 +66,21 @@ public class DetailFrame extends JFrame {
 
         // Bottom buttons
         JPanel bottom = new JPanel(new FlowLayout(FlowLayout.CENTER, 30, 10));
-        JButton viewPast = new JButton("View Past Report");
+        JButton viewPastData = new JButton("View Past Data");
+        viewPastData.addActionListener(e -> {
+            PastDataFrame past = new PastDataFrame(
+                    patient,
+                    pm.historyOf(patient.patientId()),
+                    alertEngine,
+                    this
+            );
+            past.setVisible(true);
+            this.setVisible(false);
+        });
+
         JButton pastAbn  = new JButton("Past Abnormal");
         JButton genRep   = new JButton("Generate Report");
-        bottom.add(viewPast);
+        bottom.add(viewPastData);
         bottom.add(pastAbn);
         bottom.add(genRep);
 

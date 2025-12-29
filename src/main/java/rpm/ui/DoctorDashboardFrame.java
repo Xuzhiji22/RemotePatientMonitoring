@@ -5,6 +5,7 @@ import rpm.data.PatientDataStore;
 import rpm.model.VitalSample;
 import rpm.model.VitalType;
 import rpm.sim.Simulator;
+import rpm.sim.SimulationMode;
 
 import javax.swing.*;
 import java.awt.*;
