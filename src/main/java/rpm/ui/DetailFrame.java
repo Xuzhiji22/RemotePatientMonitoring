@@ -78,8 +78,22 @@ public class DetailFrame extends JFrame {
             this.setVisible(false);
         });
 
+        //to be completed
         JButton pastAbn  = new JButton("Past Abnormal");
-        JButton genRep   = new JButton("Generate Report");
+
+        JButton genRep = new JButton("Generate Report");
+        genRep.addActionListener(e -> {
+            ReportFrame rf = new ReportFrame(
+                    patient,
+                    pm.historyOf(patient.patientId()),
+                    alertEngine,
+                    this
+            );
+            rf.setVisible(true);
+            this.setVisible(false);
+        });
+
+
         bottom.add(viewPastData);
         bottom.add(pastAbn);
         bottom.add(genRep);
