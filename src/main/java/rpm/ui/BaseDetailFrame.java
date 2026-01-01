@@ -6,20 +6,18 @@ import rpm.model.Patient;
 import rpm.model.VitalSample;
 import rpm.model.VitalType;
 import rpm.sim.Simulator;
-import rpm.sim.SimulationMode;
 
 import javax.swing.*;
 import java.awt.*;
 import java.util.List;
 
-public class DetailFrame extends JFrame {
+public abstract class BaseDetailFrame extends JFrame {
 
-    private final PatientManager pm;
-    private final AlertEngine alertEngine;
-    private final Patient patient;
-    private final JFrame overviewFrame;
-
-    private int windowSeconds = 30;
+    protected final PatientManager pm;
+    protected final AlertEngine alertEngine;
+    protected final Patient patient;
+    protected final JFrame overviewFrame;
+    protected final JFrame loginFrame;
 
     private final VitalChartPanel tempPanel = VitalChartPanel.forVital("Body Temp (°C)", VitalType.BODY_TEMPERATURE, VitalSample::bodyTemp);
     private final VitalChartPanel hrPanel   = VitalChartPanel.forVital("Heart Rate (bpm)", VitalType.HEART_RATE, VitalSample::heartRate);
@@ -28,34 +26,55 @@ public class DetailFrame extends JFrame {
     private final VitalChartPanel diaPanel  = VitalChartPanel.forVital("Diastolic BP (mmHg)", VitalType.DIASTOLIC_BP, VitalSample::diastolicBP);
     private final EcgChartPanel ecgPanel    = new EcgChartPanel();
 
-    public DetailFrame(PatientManager pm, AlertEngine alertEngine, Patient patient, JFrame overviewFrame) {
-        super("Patient Detail - " + patient.patientId());
+    public BaseDetailFrame(String title,
+                           PatientManager pm,
+                           AlertEngine alertEngine,
+                           Patient patient,
+                           JFrame overviewFrame,
+                           JFrame loginFrame) {
+
+        super(title);
         this.pm = pm;
         this.alertEngine = alertEngine;
         this.patient = patient;
         this.overviewFrame = overviewFrame;
+        this.loginFrame = loginFrame;
 
-        setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+        setDefaultCloseOperation(DISPOSE_ON_CLOSE);
         setSize(1300, 800);
         setLocationRelativeTo(null);
 
-        // Left: patient details
         JPanel left = buildPatientDetailsPanel(patient);
 
-        // Top controls + Back
+        // Top: Back + Logout + Controls
         JPanel top = new JPanel(new BorderLayout());
+
+        JPanel leftTop = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
         JButton back = new JButton("Back");
         back.addActionListener(e -> goBack());
-        top.add(back, BorderLayout.WEST);
+
+        JButton logout = new JButton("Logout");
+        logout.addActionListener(e -> doLogout());
+
+        leftTop.add(back);
+        leftTop.add(logout);
+        top.add(leftTop, BorderLayout.WEST);
 
         Simulator sim = pm.simulatorOf(patient.patientId());
         ControlsPanel controls = new ControlsPanel();
-        controls.onWindowSecondsChanged(this::applyWindowSeconds);
+        controls.onWindowSecondsChanged(s -> {
+            tempPanel.setWindowSeconds(s);
+            hrPanel.setWindowSeconds(s);
+            rrPanel.setWindowSeconds(s);
+            sysPanel.setWindowSeconds(s);
+            diaPanel.setWindowSeconds(s);
+            ecgPanel.setWindowSeconds(Math.min(30, s));
+        });
         controls.onModeChanged(sim::setMode);
         controls.onHrBaseChanged(sim::setHeartRateBase);
         top.add(controls, BorderLayout.CENTER);
 
-        // Center layout like your sketch
+        // Center: 2x3 grid
         JPanel centerGrid = new JPanel(new GridLayout(2, 3, 12, 12));
         centerGrid.add(ecgPanel);
         centerGrid.add(hrPanel);
@@ -64,41 +83,9 @@ public class DetailFrame extends JFrame {
         centerGrid.add(sysPanel);
         centerGrid.add(diaPanel);
 
-        // Bottom buttons
-        JPanel bottom = new JPanel(new FlowLayout(FlowLayout.CENTER, 30, 10));
-        JButton viewPastData = new JButton("View Past Data");
-        viewPastData.addActionListener(e -> {
-            PastDataFrame past = new PastDataFrame(
-                    patient,
-                    pm.historyOf(patient.patientId()),
-                    alertEngine,
-                    this
-            );
-            past.setVisible(true);
-            this.setVisible(false);
-        });
+        // Bottom: role-specific buttons (由子类决定)
+        JPanel bottom = buildBottomPanel();
 
-        //to be completed
-        JButton pastAbn  = new JButton("Past Abnormal");
-
-        JButton genRep = new JButton("Generate Report");
-        genRep.addActionListener(e -> {
-            ReportFrame rf = new ReportFrame(
-                    patient,
-                    pm.historyOf(patient.patientId()),
-                    alertEngine,
-                    this
-            );
-            rf.setVisible(true);
-            this.setVisible(false);
-        });
-
-
-        bottom.add(viewPastData);
-        bottom.add(pastAbn);
-        bottom.add(genRep);
-
-        // Root
         JPanel root = new JPanel(new BorderLayout(12, 12));
         root.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
         root.add(top, BorderLayout.NORTH);
@@ -108,11 +95,10 @@ public class DetailFrame extends JFrame {
 
         setContentPane(root);
 
-        // refresh timer
-        new Timer(200, e -> refresh()).start();
+        new Timer(200, e -> refresh(tempPanel, hrPanel, rrPanel, sysPanel, diaPanel, ecgPanel)).start();
     }
 
-    private JPanel buildPatientDetailsPanel(Patient p) {
+    protected JPanel buildPatientDetailsPanel(Patient p) {
         JPanel panel = new JPanel();
         panel.setPreferredSize(new Dimension(260, 600));
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
@@ -124,39 +110,45 @@ public class DetailFrame extends JFrame {
         panel.add(line("Email: " + p.email()));
         panel.add(line("Emergency: " + p.emergencyContact()));
 
+        panel.add(Box.createVerticalStrut(10));
+        panel.add(line("View: " + viewName()));
+
         return panel;
     }
 
-    private JPanel line(String text) {
+    protected JPanel line(String text) {
         JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT));
         row.add(new JLabel(text));
         return row;
     }
 
-    private void applyWindowSeconds(int s) {
-        this.windowSeconds = s;
-        tempPanel.setWindowSeconds(s);
-        hrPanel.setWindowSeconds(s);
-        rrPanel.setWindowSeconds(s);
-        sysPanel.setWindowSeconds(s);
-        diaPanel.setWindowSeconds(s);
-        ecgPanel.setWindowSeconds(Math.min(30, s)); // ECG 建议窗口别太长
-    }
-
-    private void refresh() {
+    private void refresh(VitalChartPanel temp, VitalChartPanel hr, VitalChartPanel rr,
+                         VitalChartPanel sys, VitalChartPanel dia, EcgChartPanel ecg) {
         List<VitalSample> all = pm.storeOf(patient.patientId()).getBufferedSamples();
         if (all.isEmpty()) return;
 
-        tempPanel.updateData(all, alertEngine);
-        hrPanel.updateData(all, alertEngine);
-        rrPanel.updateData(all, alertEngine);
-        sysPanel.updateData(all, alertEngine);
-        diaPanel.updateData(all, alertEngine);
-        ecgPanel.updateData(all);
+        temp.updateData(all, alertEngine);
+        hr.updateData(all, alertEngine);
+        rr.updateData(all, alertEngine);
+        sys.updateData(all, alertEngine);
+        dia.updateData(all, alertEngine);
+        ecg.updateData(all);
     }
 
-    private void goBack() {
+    protected void goBack() {
         this.dispose();
         overviewFrame.setVisible(true);
     }
+
+    protected void doLogout() {
+        this.dispose();
+        if (overviewFrame != null) overviewFrame.dispose();
+        loginFrame.setVisible(true);
+    }
+
+    // 子类：底部按钮区怎么长
+    protected abstract JPanel buildBottomPanel();
+
+    // 子类：用于显示在左侧 patient details
+    protected abstract String viewName();
 }
