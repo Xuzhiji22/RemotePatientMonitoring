@@ -1,11 +1,15 @@
 package rpm;
 
 import rpm.alert.AlertEngine;
+import rpm.auth.AuthService;
+import rpm.auth.UserStore;
+import rpm.config.ConfigStore;
 import rpm.data.PatientManager;
 import rpm.model.Patient;
 import rpm.ui.LoginFrame;
 
 import javax.swing.*;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -29,9 +33,15 @@ public class Main {
                 new Patient("P8", "Patient 8", 45, "Ward D", "p8@hospital.com", "EC8")
         );
 
-        // IMPORTANT: use the updated PatientManager constructor (with alertEngine)
+        // IMPORTANT: PatientManager constructor (with alertEngine)
         PatientManager pm = new PatientManager(patients, maxSeconds, sampleHz, alertEngine);
 
+        // NEW: user + config storage (for admin features)
+        UserStore userStore = new UserStore(Path.of("data/users.properties"));
+        ConfigStore configStore = new ConfigStore(Path.of("data/system.properties"));
+        AuthService authService = new AuthService(userStore);
+
+        // background sampling: every 200ms
         var exec = Executors.newSingleThreadScheduledExecutor();
         exec.scheduleAtFixedRate(() -> {
             long now = System.currentTimeMillis();
@@ -55,7 +65,8 @@ public class Main {
         }, 0, samplePeriodMs, TimeUnit.MILLISECONDS);
 
         SwingUtilities.invokeLater(() -> {
-            LoginFrame login = new LoginFrame(pm, alertEngine);
+            // NEW: use updated LoginFrame constructor
+            LoginFrame login = new LoginFrame(pm, alertEngine, authService, userStore, configStore);
             login.setVisible(true);
         });
     }
