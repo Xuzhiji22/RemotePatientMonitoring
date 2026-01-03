@@ -32,9 +32,18 @@ public class DoctorDetailFrame extends BaseDetailFrame {
         });
 
         JButton pastAbn = new JButton("Past Abnormal");
-        pastAbn.addActionListener(e ->
-                JOptionPane.showMessageDialog(this, "Past Abnormal: implement later", "Info", JOptionPane.INFORMATION_MESSAGE)
-        );
+        pastAbn.addActionListener(e -> {
+            PastAbnormalFrame f = new PastAbnormalFrame(
+                    patient,
+                    pm.historyOf(patient.patientId()), // PatientHistoryStore
+                    alertEngine,
+                    this
+            );
+            f.setVisible(true);
+            this.setVisible(false);
+        });
+
+
 
         JButton genRep = new JButton("Generate Report");
         genRep.addActionListener(e -> {
