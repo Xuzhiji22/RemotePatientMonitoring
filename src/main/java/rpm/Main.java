@@ -36,7 +36,7 @@ public class Main {
         // IMPORTANT: PatientManager constructor (with alertEngine)
         PatientManager pm = new PatientManager(patients, maxSeconds, sampleHz, alertEngine);
 
-        // NEW: user + config storage (for admin features)
+        // user + config storage (for admin features)
         UserStore userStore = new UserStore(Path.of("data/users.properties"));
         ConfigStore configStore = new ConfigStore(Path.of("data/system.properties"));
         AuthService authService = new AuthService(userStore);
@@ -65,7 +65,7 @@ public class Main {
         }, 0, samplePeriodMs, TimeUnit.MILLISECONDS);
 
         SwingUtilities.invokeLater(() -> {
-            // NEW: use updated LoginFrame constructor
+            // use updated LoginFrame constructor
             LoginFrame login = new LoginFrame(pm, alertEngine, authService, userStore, configStore);
             login.setVisible(true);
         });

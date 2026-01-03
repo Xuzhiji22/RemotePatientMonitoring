@@ -11,6 +11,16 @@ public class PatientHistoryStore {
     }
 
     public List<MinuteRecord> getLast24Hours() {
-        return minuteRecords.snapshot(); // 最多 1440 条
+        return minuteRecords.snapshot(); // max 1440
+    }
+
+    // for ui use
+    public List<MinuteRecord> minuteRecords() {
+        return getLast24Hours();
+    }
+
+    // for previous use
+    public List<MinuteRecord> getMinuteRecords() {
+        return getLast24Hours();
     }
 }

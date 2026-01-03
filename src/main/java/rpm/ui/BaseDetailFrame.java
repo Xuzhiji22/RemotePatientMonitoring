@@ -26,6 +26,10 @@ public abstract class BaseDetailFrame extends JFrame {
     private final VitalChartPanel diaPanel  = VitalChartPanel.forVital("Diastolic BP (mmHg)", VitalType.DIASTOLIC_BP, VitalSample::diastolicBP);
     private final EcgChartPanel ecgPanel    = new EcgChartPanel();
 
+    // Table + Latest panels
+    private final VitalTablePanel tablePanel = new VitalTablePanel();
+    private final LatestReadingsPanel latestPanel = new LatestReadingsPanel();
+
     public BaseDetailFrame(String title,
                            PatientManager pm,
                            AlertEngine alertEngine,
@@ -41,7 +45,7 @@ public abstract class BaseDetailFrame extends JFrame {
         this.loginFrame = loginFrame;
 
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
-        setSize(1300, 800);
+        setSize(1400, 820);
         setLocationRelativeTo(null);
 
         JPanel left = buildPatientDetailsPanel(patient);
@@ -74,28 +78,44 @@ public abstract class BaseDetailFrame extends JFrame {
         controls.onHrBaseChanged(sim::setHeartRateBase);
         top.add(controls, BorderLayout.CENTER);
 
-        // Center: 2x3 grid
-        JPanel centerGrid = new JPanel(new GridLayout(2, 3, 12, 12));
-        centerGrid.add(ecgPanel);
-        centerGrid.add(hrPanel);
-        centerGrid.add(rrPanel);
-        centerGrid.add(tempPanel);
-        centerGrid.add(sysPanel);
-        centerGrid.add(diaPanel);
+        // Center = Tabs (Charts / Table) + Right Latest panel
+        JPanel chartsGrid = new JPanel(new GridLayout(2, 3, 12, 12));
+        chartsGrid.add(ecgPanel);
+        chartsGrid.add(hrPanel);
+        chartsGrid.add(rrPanel);
+        chartsGrid.add(tempPanel);
+        chartsGrid.add(sysPanel);
+        chartsGrid.add(diaPanel);
 
-        // Bottom: role-specific buttons (由子类决定)
+        JTabbedPane tabs = new JTabbedPane();
+        tabs.addTab("Charts", wrap(chartsGrid));
+        tabs.addTab("Table", tablePanel);
+
+        JPanel center = new JPanel(new BorderLayout(12, 12));
+        center.add(tabs, BorderLayout.CENTER);
+        center.add(latestPanel, BorderLayout.EAST);
+        latestPanel.setPreferredSize(new Dimension(300, 600));
+
+        // Bottom: role-specific buttons
         JPanel bottom = buildBottomPanel();
 
         JPanel root = new JPanel(new BorderLayout(12, 12));
         root.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
         root.add(top, BorderLayout.NORTH);
         root.add(left, BorderLayout.WEST);
-        root.add(centerGrid, BorderLayout.CENTER);
+        root.add(center, BorderLayout.CENTER);
         root.add(bottom, BorderLayout.SOUTH);
 
         setContentPane(root);
 
-        new Timer(200, e -> refresh(tempPanel, hrPanel, rrPanel, sysPanel, diaPanel, ecgPanel)).start();
+        new Timer(200, e -> refresh()).start();
+    }
+
+    private JPanel wrap(JComponent c) {
+        JPanel p = new JPanel(new BorderLayout());
+        p.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
+        p.add(c, BorderLayout.CENTER);
+        return p;
     }
 
     protected JPanel buildPatientDetailsPanel(Patient p) {
@@ -122,17 +142,22 @@ public abstract class BaseDetailFrame extends JFrame {
         return row;
     }
 
-    private void refresh(VitalChartPanel temp, VitalChartPanel hr, VitalChartPanel rr,
-                         VitalChartPanel sys, VitalChartPanel dia, EcgChartPanel ecg) {
+    private void refresh() {
         List<VitalSample> all = pm.storeOf(patient.patientId()).getBufferedSamples();
         if (all.isEmpty()) return;
 
-        temp.updateData(all, alertEngine);
-        hr.updateData(all, alertEngine);
-        rr.updateData(all, alertEngine);
-        sys.updateData(all, alertEngine);
-        dia.updateData(all, alertEngine);
-        ecg.updateData(all);
+        // Charts
+        tempPanel.updateData(all, alertEngine);
+        hrPanel.updateData(all, alertEngine);
+        rrPanel.updateData(all, alertEngine);
+        sysPanel.updateData(all, alertEngine);
+        diaPanel.updateData(all, alertEngine);
+        ecgPanel.updateData(all);
+
+        // Latest + Table
+        VitalSample latest = all.get(all.size() - 1);
+        latestPanel.update(latest, alertEngine);
+        tablePanel.setSamples(all, alertEngine);
     }
 
     protected void goBack() {

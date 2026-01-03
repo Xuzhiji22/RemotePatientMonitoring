@@ -32,9 +32,17 @@ public class NurseDetailFrame extends BaseDetailFrame {
         });
 
         JButton pastAbn = new JButton("Past Abnormal");
-        pastAbn.addActionListener(e ->
-                JOptionPane.showMessageDialog(this, "Past Abnormal: implement later", "Info", JOptionPane.INFORMATION_MESSAGE)
-        );
+        pastAbn.addActionListener(e -> {
+            PastAbnormalFrame abn = new PastAbnormalFrame(
+                    patient,
+                    pm.historyOf(patient.patientId()),
+                    alertEngine,
+                    this
+            );
+            abn.setVisible(true);
+            this.setVisible(false);
+        });
+
 
         // Nurse view: no report generation button
         bottom.add(viewPastData);
