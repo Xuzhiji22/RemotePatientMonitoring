@@ -5,6 +5,7 @@ import rpm.model.VitalSample;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 public class MinuteAggregator {
     private final AlertEngine alertEngine;
@@ -44,5 +45,46 @@ public class MinuteAggregator {
         return new MinuteRecord(minuteStart, temp, hr, rr, sys, dia, n);
     }
 
-    public record AggregationResult(MinuteRecord minuteRecord, List<AbnormalEvent> abnormalEvents) {}
+    // Java 11 replacement for record AggregationResult(...)
+    public static final class AggregationResult {
+        private final MinuteRecord minuteRecord;
+        private final List<AbnormalEvent> abnormalEvents;
+
+        public AggregationResult(MinuteRecord minuteRecord, List<AbnormalEvent> abnormalEvents) {
+            this.minuteRecord = minuteRecord;
+            this.abnormalEvents = abnormalEvents;
+        }
+
+        public MinuteRecord minuteRecord() {
+            return minuteRecord;
+        }
+
+        public List<AbnormalEvent> abnormalEvents() {
+            return abnormalEvents;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof AggregationResult)) return false;
+
+            AggregationResult other = (AggregationResult) o;
+            return Objects.equals(minuteRecord, other.minuteRecord())
+                    && Objects.equals(abnormalEvents, other.abnormalEvents());
+        }
+
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(minuteRecord, abnormalEvents);
+        }
+
+        @Override
+        public String toString() {
+            return "AggregationResult[" +
+                    "minuteRecord=" + minuteRecord +
+                    ", abnormalEvents=" + abnormalEvents +
+                    "]";
+        }
+    }
 }

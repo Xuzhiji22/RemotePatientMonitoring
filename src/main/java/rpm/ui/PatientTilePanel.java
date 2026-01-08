@@ -93,10 +93,16 @@ public class PatientTilePanel extends JPanel {
     }
 
     private Color levelColor(AlertLevel level) {
-        return switch (level) {
-            case NORMAL -> new Color(0, 170, 0);
-            case WARNING -> new Color(230, 170, 0);
-            case URGENT -> new Color(220, 0, 0);
-        };
+        switch (level) {
+            case NORMAL:
+                return new Color(0, 170, 0);
+            case WARNING:
+                return new Color(230, 170, 0);
+            case URGENT:
+                return new Color(220, 0, 0);
+            default:
+                return Color.BLACK;
+        }
     }
+
 }

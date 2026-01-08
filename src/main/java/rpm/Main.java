@@ -4,14 +4,22 @@ import rpm.alert.AlertEngine;
 import rpm.auth.AuthService;
 import rpm.auth.UserStore;
 import rpm.config.ConfigStore;
+import rpm.data.MinuteAggregator;
+import rpm.data.PatientDataStore;
 import rpm.data.PatientManager;
 import rpm.model.Patient;
+import rpm.model.VitalSample;
+
+
+
+import rpm.sim.Simulator;
 import rpm.ui.LoginFrame;
 
 import javax.swing.*;
-import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 public class Main {
@@ -37,37 +45,52 @@ public class Main {
         PatientManager pm = new PatientManager(patients, maxSeconds, sampleHz, alertEngine);
 
         // user + config storage (for admin features)
-        UserStore userStore = new UserStore(Path.of("data/users.properties"));
-        ConfigStore configStore = new ConfigStore(Path.of("data/system.properties"));
+        UserStore userStore = new UserStore(Paths.get("data", "users.properties"));
+        ConfigStore configStore = new ConfigStore(Paths.get("data", "system.properties"));
         AuthService authService = new AuthService(userStore);
 
         // background sampling: every 200ms
-        var exec = Executors.newSingleThreadScheduledExecutor();
-        exec.scheduleAtFixedRate(() -> {
-            long now = System.currentTimeMillis();
+        ScheduledExecutorService exec = Executors.newSingleThreadScheduledExecutor();
+        exec.scheduleAtFixedRate(new Runnable() {
+            @Override
+            public void run() {
+                long now = System.currentTimeMillis();
 
-            for (Patient p : pm.getPatients()) {
-                String id = p.patientId();
+                for (Patient p : pm.getPatients()) {
+                    String id = p.patientId();
 
-                var sim = pm.simulatorOf(id);
-                var store = pm.storeOf(id);
-                var sample = sim.nextSample(now);
-                store.addSample(sample);
+                    Simulator sim = pm.simulatorOf(id);
+                    PatientDataStore store = pm.storeOf(id);
 
-                // minute aggregation -> 24h history
-                var agg = pm.aggregatorOf(id);
-                var result = agg.onSample(sample);
-                if (result.minuteRecord() != null) {
-                    pm.historyOf(id).addMinuteRecord(result.minuteRecord());
+                    VitalSample sample = sim.nextSample(now);
+                    store.addSample(sample);
+
+                    // minute aggregation -> 24h history
+                    MinuteAggregator agg = pm.aggregatorOf(id);
+
+                    /*
+                     * 这里唯一不确定的是 onSample 的返回类型名字。
+                     * 你把下面这一行里的 MinuteAggregatorResult 换成你项目真实返回类型即可
+                     * （IDE 点到 onSample(...) 上会显示 return type）。
+                     */
+                    MinuteAggregator agg1 = pm.aggregatorOf(id);
+                    MinuteAggregator.AggregationResult result = agg1.onSample(sample);
+
+                    if (result.minuteRecord() != null) {
+                        pm.historyOf(id).addMinuteRecord(result.minuteRecord());
+                    }
+
+
                 }
             }
-
         }, 0, samplePeriodMs, TimeUnit.MILLISECONDS);
 
-        SwingUtilities.invokeLater(() -> {
-            // use updated LoginFrame constructor
-            LoginFrame login = new LoginFrame(pm, alertEngine, authService, userStore, configStore);
-            login.setVisible(true);
+        SwingUtilities.invokeLater(new Runnable() {
+            @Override
+            public void run() {
+                LoginFrame login = new LoginFrame(pm, alertEngine, authService, userStore, configStore);
+                login.setVisible(true);
+            }
         });
     }
 }

@@ -100,14 +100,28 @@ public class PastDataFrame extends JFrame {
     private void applyVitalSelection() {
         int idx = vitalBox.getSelectedIndex();
         switch (idx) {
-            case 0 -> chart.setVital(VitalType.BODY_TEMPERATURE, MinuteRecord::avgTemp);
-            case 1 -> chart.setVital(VitalType.HEART_RATE, MinuteRecord::avgHR);
-            case 2 -> chart.setVital(VitalType.RESPIRATORY_RATE, MinuteRecord::avgRR);
-            case 3 -> chart.setVital(VitalType.SYSTOLIC_BP, MinuteRecord::avgSys);
-            case 4 -> chart.setVital(VitalType.DIASTOLIC_BP, MinuteRecord::avgDia);
+            case 0:
+                chart.setVital(VitalType.BODY_TEMPERATURE, MinuteRecord::avgTemp);
+                break;
+            case 1:
+                chart.setVital(VitalType.HEART_RATE, MinuteRecord::avgHR);
+                break;
+            case 2:
+                chart.setVital(VitalType.RESPIRATORY_RATE, MinuteRecord::avgRR);
+                break;
+            case 3:
+                chart.setVital(VitalType.SYSTOLIC_BP, MinuteRecord::avgSys);
+                break;
+            case 4:
+                chart.setVital(VitalType.DIASTOLIC_BP, MinuteRecord::avgDia);
+                break;
+            default:
+                chart.setVital(VitalType.HEART_RATE, MinuteRecord::avgHR);
+                break;
         }
         chart.repaint();
     }
+
 
     private void applyMinuteSelection() {
         if (records.isEmpty()) return;

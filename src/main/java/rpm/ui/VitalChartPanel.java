@@ -9,6 +9,7 @@ import javax.swing.*;
 import java.awt.*;
 import java.util.List;
 import java.util.function.ToDoubleFunction;
+import java.util.stream.Collectors;
 
 public class VitalChartPanel extends JPanel {
 
@@ -67,9 +68,10 @@ public class VitalChartPanel extends JPanel {
         long latestT = data.get(data.size() - 1).timestampMs();
         long startT = latestT - windowSeconds * 1000L;
 
+        // Fit Java 11: stream().toList() -> collect(Collectors.toList())
         List<VitalSample> win = data.stream()
                 .filter(s -> s.timestampMs() >= startT)
-                .toList();
+                .collect(Collectors.toList());
 
         if (win.size() < 2) return;
 
@@ -112,10 +114,16 @@ public class VitalChartPanel extends JPanel {
     }
 
     private Color levelColor(AlertLevel level) {
-        return switch (level) {
-            case NORMAL -> new Color(0, 170, 0);
-            case WARNING -> new Color(230, 170, 0);
-            case URGENT -> new Color(220, 0, 0);
-        };
+        // Java 11: switch expression -> classic switch
+        switch (level) {
+            case NORMAL:
+                return new Color(0, 170, 0);
+            case WARNING:
+                return new Color(230, 170, 0);
+            case URGENT:
+                return new Color(220, 0, 0);
+            default:
+                return Color.BLACK;
+        }
     }
 }

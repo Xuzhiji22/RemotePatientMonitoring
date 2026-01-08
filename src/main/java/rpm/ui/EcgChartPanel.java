@@ -42,7 +42,8 @@ public class EcgChartPanel extends JPanel {
 
         List<VitalSample> win = data.stream()
                 .filter(s -> s.timestampMs() >= startT)
-                .toList();
+                .collect(java.util.stream.Collectors.toList());
+
 
         if (win.size() < 2) return;
 

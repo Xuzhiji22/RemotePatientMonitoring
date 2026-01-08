@@ -567,14 +567,31 @@ public class AdminFrame extends JFrame {
                     ((Number) urgentHigh.getValue()).doubleValue()
             );
 
-            VitalType type = switch (name) {
-                case "TEMP" -> VitalType.BODY_TEMPERATURE;
-                case "HR" -> VitalType.HEART_RATE;
-                case "RR" -> VitalType.RESPIRATORY_RATE;
-                case "SYS" -> VitalType.SYSTOLIC_BP;
-                case "DIA" -> VitalType.DIASTOLIC_BP;
-                default -> throw new IllegalStateException("Unknown row: " + name);
-            };
+            if (name == null) {
+                throw new IllegalStateException("Unknown row: null");
+            }
+
+            VitalType type;
+            switch (name) {
+                case "TEMP":
+                    type = VitalType.BODY_TEMPERATURE;
+                    break;
+                case "HR":
+                    type = VitalType.HEART_RATE;
+                    break;
+                case "RR":
+                    type = VitalType.RESPIRATORY_RATE;
+                    break;
+                case "SYS":
+                    type = VitalType.SYSTOLIC_BP;
+                    break;
+                case "DIA":
+                    type = VitalType.DIASTOLIC_BP;
+                    break;
+                default:
+                    throw new IllegalStateException("Unknown row: " + name);
+            }
+
 
             alertEngine.setThreshold(type, nt);
         }

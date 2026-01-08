@@ -182,25 +182,38 @@ public class PastAbnormalFrame extends JFrame {
     }
 
     private String pretty(VitalType t) {
-        return switch (t) {
-            case BODY_TEMPERATURE -> "Body Temp";
-            case HEART_RATE -> "Heart Rate";
-            case RESPIRATORY_RATE -> "Resp Rate";
-            case SYSTOLIC_BP -> "Systolic BP";
-            case DIASTOLIC_BP -> "Diastolic BP";
-            default -> t.toString();
-        };
+        switch (t) {
+            case BODY_TEMPERATURE:
+                return "Body Temp";
+            case HEART_RATE:
+                return "Heart Rate";
+            case RESPIRATORY_RATE:
+                return "Resp Rate";
+            case SYSTOLIC_BP:
+                return "Systolic BP";
+            case DIASTOLIC_BP:
+                return "Diastolic BP";
+            default:
+                return t.toString();
+        }
     }
 
     private String formatValue(VitalType t, double v) {
-        return switch (t) {
-            case BODY_TEMPERATURE -> String.format("%.2f °C", v);
-            case HEART_RATE -> String.format("%.0f bpm", v);
-            case RESPIRATORY_RATE -> String.format("%.0f rpm", v);
-            case SYSTOLIC_BP, DIASTOLIC_BP -> String.format("%.0f mmHg", v);
-            default -> String.format("%.2f", v);
-        };
+        switch (t) {
+            case BODY_TEMPERATURE:
+                return String.format("%.2f °C", v);
+            case HEART_RATE:
+                return String.format("%.0f bpm", v);
+            case RESPIRATORY_RATE:
+                return String.format("%.0f rpm", v);
+            case SYSTOLIC_BP:
+            case DIASTOLIC_BP:
+                return String.format("%.0f mmHg", v);
+            default:
+                return String.format("%.2f", v);
+        }
     }
+
 
     private static class LevelRenderer extends DefaultTableCellRenderer {
         @Override

@@ -14,7 +14,7 @@ import java.util.function.ToDoubleFunction;
 
 public class ReportGenerator {
 
-    private static final List<VitalType> VITALS = Arrays.asList(
+    private static final List<VitalType> VITALS = List.of(
             VitalType.BODY_TEMPERATURE,
             VitalType.HEART_RATE,
             VitalType.RESPIRATORY_RATE,
@@ -27,24 +27,24 @@ public class ReportGenerator {
                                          AlertEngine alertEngine) {
 
         long now = System.currentTimeMillis();
-        String title = "Daily Report (Last 24 hours) - " + patient.getPatientId() + " - " + patient.getName();
+        String title = "Daily Report (Last 24 hours) - " + patient.patientId() + " - " + patient.name();
 
         Map<VitalType, DailyReport.VitalSummary> summaries = new EnumMap<>(VitalType.class);
         List<DailyReport.AbnormalItem> abnormalItems = new ArrayList<>();
 
-        if (records == null) records = Collections.emptyList();
+        if (records == null) records = List.of();
 
-        // mapping extractor (Java 11 compatible)
-        Map<VitalType, ToDoubleFunction<MinuteRecord>> extractor = new EnumMap<>(VitalType.class);
-        extractor.put(VitalType.BODY_TEMPERATURE, r -> r.getAvgTemp());
-        extractor.put(VitalType.HEART_RATE, r -> r.getAvgHR());
-        extractor.put(VitalType.RESPIRATORY_RATE, r -> r.getAvgRR());
-        extractor.put(VitalType.SYSTOLIC_BP, r -> r.getAvgSys());
-        extractor.put(VitalType.DIASTOLIC_BP, r -> r.getAvgDia());
+        // mapping extractor
+        Map<VitalType, ToDoubleFunction<MinuteRecord>> extractor = Map.of(
+                VitalType.BODY_TEMPERATURE, MinuteRecord::avgTemp,
+                VitalType.HEART_RATE, MinuteRecord::avgHR,
+                VitalType.RESPIRATORY_RATE, MinuteRecord::avgRR,
+                VitalType.SYSTOLIC_BP, MinuteRecord::avgSys,
+                VitalType.DIASTOLIC_BP, MinuteRecord::avgDia
+        );
 
         for (VitalType vt : VITALS) {
             ToDoubleFunction<MinuteRecord> ex = extractor.get(vt);
-            if (ex == null) continue;
 
             double min = Double.POSITIVE_INFINITY;
             double max = Double.NEGATIVE_INFINITY;
@@ -68,7 +68,7 @@ public class ReportGenerator {
                 if (level == AlertLevel.URGENT) urg++;
 
                 if (level != AlertLevel.NORMAL) {
-                    abnormalItems.add(new DailyReport.AbnormalItem(r.getMinuteStartMs(), vt, level, v));
+                    abnormalItems.add(new DailyReport.AbnormalItem(r.minuteStartMs(), vt, level, v));
                 }
             }
 
@@ -81,8 +81,8 @@ public class ReportGenerator {
             summaries.put(vt, new DailyReport.VitalSummary(min, max, avg, n, warn, urg));
         }
 
-        // abnormal items: sort by time ascending
-        abnormalItems.sort(Comparator.comparingLong(DailyReport.AbnormalItem::getMinuteStartMs));
+        // abnormal items: sort by time ascending (or latest first, you decide)
+        abnormalItems.sort(Comparator.comparingLong(DailyReport.AbnormalItem::minuteStartMs));
 
         return new DailyReport(title, now, summaries, abnormalItems);
     }
@@ -93,50 +93,45 @@ public class ReportGenerator {
         DateTimeFormatter dt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
                 .withZone(ZoneId.systemDefault());
 
-        sb.append(report.getTitle()).append("\n");
-        sb.append("Generated at: ").append(dt.format(Instant.ofEpochMilli(report.getGeneratedAtMs()))).append("\n\n");
+        sb.append(report.title()).append("\n");
+        sb.append("Generated at: ").append(dt.format(Instant.ofEpochMilli(report.generatedAtMs()))).append("\n\n");
 
         sb.append("Patient details:\n");
-        sb.append("  ID: ").append(patient.getPatientId()).append("\n");
-        sb.append("  Name: ").append(patient.getName()).append("\n");
-        sb.append("  Age: ").append(patient.getAge()).append("\n");
-        sb.append("  Ward: ").append(patient.getWard()).append("\n");
-        sb.append("  Email: ").append(patient.getEmail()).append("\n");
-        sb.append("  Emergency contact: ").append(patient.getEmergencyContact()).append("\n\n");
+        sb.append("  ID: ").append(patient.patientId()).append("\n");
+        sb.append("  Name: ").append(patient.name()).append("\n");
+        sb.append("  Age: ").append(patient.age()).append("\n");
+        sb.append("  Ward: ").append(patient.ward()).append("\n");
+        sb.append("  Email: ").append(patient.email()).append("\n");
+        sb.append("  Emergency contact: ").append(patient.emergencyContact()).append("\n\n");
 
         sb.append("1) Vital signs value range (minute averages)\n");
         sb.append("--------------------------------------------------\n");
-
-        for (VitalType vt : Arrays.asList(
+        for (VitalType vt : List.of(
                 VitalType.BODY_TEMPERATURE,
                 VitalType.HEART_RATE,
                 VitalType.RESPIRATORY_RATE,
                 VitalType.SYSTOLIC_BP,
                 VitalType.DIASTOLIC_BP
         )) {
-            DailyReport.VitalSummary s = report.getSummaries().get(vt);
-            if (s == null) continue;
-
-            sb.append(String.format(
-                    "%-18s  min=%8.2f  max=%8.2f  avg=%8.2f  minutes=%4d  warning=%3d  urgent=%3d%n",
+            DailyReport.VitalSummary s = report.summaries().get(vt);
+            sb.append(String.format("%-18s  min=%8.2f  max=%8.2f  avg=%8.2f  minutes=%4d  warning=%3d  urgent=%3d%n",
                     pretty(vt),
-                    s.getMin(), s.getMax(), s.getAvg(),
-                    s.getTotalMinutes(), s.getWarningMinutes(), s.getUrgentMinutes()
-            ));
+                    s.min(), s.max(), s.avg(),
+                    s.totalMinutes(), s.warningMinutes(), s.urgentMinutes()));
         }
         sb.append("\n");
 
         sb.append("2) Abnormal details (minute-level)\n");
         sb.append("--------------------------------------------------\n");
-        if (report.getAbnormalItems().isEmpty()) {
+        if (report.abnormalItems().isEmpty()) {
             sb.append("No abnormal minutes detected in the available data.\n");
         } else {
-            for (DailyReport.AbnormalItem item : report.getAbnormalItems()) {
+            for (DailyReport.AbnormalItem item : report.abnormalItems()) {
                 sb.append(String.format("%s  %-18s  level=%-7s  value=%.2f%n",
-                        dt.format(Instant.ofEpochMilli(item.getMinuteStartMs())),
-                        pretty(item.getVitalType()),
-                        item.getLevel(),
-                        item.getValue()));
+                        dt.format(Instant.ofEpochMilli(item.minuteStartMs())),
+                        pretty(item.vitalType()),
+                        item.level(),
+                        item.value()));
             }
         }
 
@@ -159,4 +154,6 @@ public class ReportGenerator {
                 return vt.name();
         }
     }
+
 }
+
