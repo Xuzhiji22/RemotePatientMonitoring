@@ -67,14 +67,7 @@ public class Main {
 
                     // minute aggregation -> 24h history
                     MinuteAggregator agg = pm.aggregatorOf(id);
-
-                    /*
-                     * 这里唯一不确定的是 onSample 的返回类型名字。
-                     * 你把下面这一行里的 MinuteAggregatorResult 换成你项目真实返回类型即可
-                     * （IDE 点到 onSample(...) 上会显示 return type）。
-                     */
-                    MinuteAggregator agg1 = pm.aggregatorOf(id);
-                    MinuteAggregator.AggregationResult result = agg1.onSample(sample);
+                    MinuteAggregator.AggregationResult result = agg.onSample(sample);
 
                     if (result.minuteRecord() != null) {
                         pm.historyOf(id).addMinuteRecord(result.minuteRecord());
