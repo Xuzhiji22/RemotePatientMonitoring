@@ -29,9 +29,19 @@ public class HealthServlet extends HttpServlet {
 
         try (Connection c = Db.getConnection()) {
             resp.getWriter().println("OK - DB connected: " + (c != null && !c.isClosed()));
+
+            try (var st = c.createStatement();
+                 var rs = st.executeQuery("SELECT to_regclass('public.patients'), to_regclass('public.vital_samples')")) {
+                if (rs.next()) {
+                    resp.getWriter().println("patients table: " + rs.getString(1));
+                    resp.getWriter().println("vital_samples table: " + rs.getString(2));
+                }
+            }
         } catch (Exception e) {
             resp.setStatus(500);
             resp.getWriter().println("DB ERROR: " + e.getMessage());
         }
+
+
     }
 }
