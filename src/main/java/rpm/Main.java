@@ -9,7 +9,7 @@ import rpm.data.PatientDataStore;
 import rpm.data.PatientManager;
 import rpm.model.Patient;
 import rpm.model.VitalSample;
-import rpm.notify.AlertEmailNotifier;
+import rpm.notify.DailyDigestNotifier;
 import rpm.notify.EmailService;
 import rpm.notify.FileEmailService;
 import rpm.sim.Simulator;
@@ -18,6 +18,7 @@ import rpm.ui.LoginFrame;
 import javax.swing.*;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -49,26 +50,25 @@ public class Main {
         ConfigStore configStore = new ConfigStore(Paths.get("data", "system.properties"));
         AuthService authService = new AuthService(userStore);
 
-        // -----------------------------
-        // ✅ Email + Notifier (new)
-        // -----------------------------
-        // config keys (you can add these into data/system.properties)
-        // doctor.email=doctor@hospital.com
+        // Daily digest email (new)
+        // Suggested keys in data/system.properties:
         // email.enabled=true
-        // email.cooldownMs=15000
-        // email.sendWarningsToo=false
+        // doctor.email=doctor@hospital.com
+        // digest.hour=8
+        // digest.minute=0
 
         boolean emailEnabled = configStore.getBool("email.enabled", true);
         String doctorEmail = configStore.getString("doctor.email", "doctor@hospital.com");
-        long cooldownMs = (long) configStore.getInt("email.cooldownMs", 15_000);
-        boolean sendWarningsToo = configStore.getBool("email.sendWarningsToo", false);
 
-        // File-based outbox (demo-friendly, no SMTP needed)
+        int digestHour = configStore.getInt("digest.hour", 8);
+        int digestMinute = configStore.getInt("digest.minute", 0);
+
         EmailService emailService = new FileEmailService(Path.of("outbox"));
-        AlertEmailNotifier notifier = new AlertEmailNotifier(emailService, alertEngine, doctorEmail, cooldownMs);
+        DailyDigestNotifier digest = new DailyDigestNotifier(emailService, alertEngine, doctorEmail);
 
-        // background sampling: every 200ms
         ScheduledExecutorService exec = Executors.newSingleThreadScheduledExecutor();
+
+        // background sampling: every 200ms (unchanged sampling + UI/history logic)
         exec.scheduleAtFixedRate(new Runnable() {
             @Override
             public void run() {
@@ -83,11 +83,6 @@ public class Main {
                     VitalSample sample = sim.nextSample(now);
                     store.addSample(sample);
 
-                    // (1) realtime alert email
-                    if (emailEnabled) {
-                        notifier.onRealtimeSample(p, sample, sendWarningsToo);
-                    }
-
                     // minute aggregation -> 24h history
                     MinuteAggregator agg = pm.aggregatorOf(id);
                     MinuteAggregator.AggregationResult result = agg.onSample(sample);
@@ -96,9 +91,9 @@ public class Main {
                         var mr = result.minuteRecord();
                         pm.historyOf(id).addMinuteRecord(mr);
 
-                        // (2) minute abnormal summary email (only if abnormal exists)
+                        // collect digest stats only (no immediate emails)
                         if (emailEnabled) {
-                            notifier.onMinuteAverage(
+                            digest.onMinuteAverage(
                                     p,
                                     mr.minuteStartMs(),
                                     mr.avgTemp(),
@@ -112,6 +107,19 @@ public class Main {
                 }
             }
         }, 0, samplePeriodMs, TimeUnit.MILLISECONDS);
+
+        // send digest once per day (check every 60s)
+        exec.scheduleAtFixedRate(new Runnable() {
+            @Override
+            public void run() {
+                if (!emailEnabled) return;
+
+                LocalDateTime now = LocalDateTime.now();
+                if (now.getHour() == digestHour && now.getMinute() == digestMinute) {
+                    digest.sendDailyIfDue(now);
+                }
+            }
+        }, 0, 60, TimeUnit.SECONDS);
 
         SwingUtilities.invokeLater(new Runnable() {
             @Override
