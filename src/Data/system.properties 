@@ -1,0 +1,4 @@
+doctor.email=doctor@hospital.com
+email.enabled=true
+email.cooldownMs=15000
+email.sendWarningsToo=false
