@@ -27,11 +27,7 @@ war {
 
     sourceCompatibility = JavaVersion.VERSION_11
 
-
-    duplicatesStrategy(DuplicatesStrategy.EXCLUDE)
-    from {
-        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
-    }
+    archiveFileName = 'ROOT.war'
 }
 
 
