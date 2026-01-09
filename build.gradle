@@ -26,16 +26,15 @@ java {
 war {
 
     sourceCompatibility = JavaVersion.VERSION_11
-
     archiveFileName = 'ROOT.war'
 }
 
 
 tasks.register('stage') {
-    dependsOn 'build'
     dependsOn 'clean'
+    dependsOn 'war'
 }
-build.mustRunAfter clean
+
 
 dependencies {
 
