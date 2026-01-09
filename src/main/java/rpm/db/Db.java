@@ -6,6 +6,13 @@ import java.sql.SQLException;
 
 public class Db {
     public static Connection getConnection() throws SQLException {
+
+        try {
+            Class.forName("org.postgresql.Driver");
+        } catch (ClassNotFoundException e) {
+            throw new RuntimeException("PostgreSQL JDBC driver not found on classpath", e);
+        }
+
         String host = System.getenv("PGHOST");
         String port = System.getenv("PGPORT");
         String db   = System.getenv("PGDATABASE");
