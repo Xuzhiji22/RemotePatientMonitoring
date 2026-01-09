@@ -11,7 +11,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import rpm.dao.PatientDao;
+
 public class PatientManager {
+
+    private final PatientDao patientDao = new PatientDao();
 
     private final AlertEngine alertEngine;
     private final int maxSeconds;
@@ -56,6 +60,13 @@ public class PatientManager {
 
     private void internalAddPatient(Patient p, int index) {
         patients.add(p);
+
+        try {
+            patientDao.upsert(p);
+        } catch (Exception e) {
+            // 本地没绑 PG 环境变量也能继续跑，不要让它直接炸掉
+            e.printStackTrace();
+        }
 
         stores.put(p.patientId(), new PatientDataStore(maxSeconds, sampleHz));
 
