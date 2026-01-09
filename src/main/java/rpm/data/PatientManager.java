@@ -59,7 +59,7 @@ public class PatientManager {
 
         stores.put(p.patientId(), new PatientDataStore(maxSeconds, sampleHz));
 
-        SimpleVitalSimulator sim = new SimpleVitalSimulator();
+        SimpleVitalSimulator sim = new SimpleVitalSimulator(p);
         sim.setMode(index % 5 == 0 ? SimulationMode.ABNORMAL : SimulationMode.NORMAL);
         sim.setHeartRateBase(65 + index * 3);
         simulators.put(p.patientId(), sim);

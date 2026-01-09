@@ -1,12 +1,17 @@
 package rpm.sim;
 
 import rpm.model.VitalSample;
-
+import rpm.model.Patient;
 import java.util.Random;
+import rpm.dao.VitalSampleDao;
 
 public class SimpleVitalSimulator implements Simulator {
+
+    private final VitalSampleDao vitalDao = new VitalSampleDao();
     private final Random rng = new Random();
     private SimulationMode mode = SimulationMode.NORMAL;
+
+    private final Patient patient;
 
     private double hrBase = 75.0;
     private double tempBase = 36.7;
@@ -15,6 +20,12 @@ public class SimpleVitalSimulator implements Simulator {
     private double diaBase = 80.0;
 
     private double phase = 0;
+
+
+    public SimpleVitalSimulator(Patient patient) {
+        this.patient = patient;
+    }
+
 
     @Override
     public VitalSample nextSample(long nowMs) {
@@ -31,7 +42,15 @@ public class SimpleVitalSimulator implements Simulator {
 
         phase += 0.20;
 
-        return new VitalSample(nowMs, temp, hr, rr, sys, dia, ecg);
+        VitalSample sample = new VitalSample(nowMs, temp, hr, rr, sys, dia, ecg);
+
+        try {
+            vitalDao.insert(patient.patientId(), sample);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        return sample;
     }
 
     private double noise(double std) {
