@@ -59,7 +59,7 @@ public final class DbInit {
                             "PRIMARY KEY (patient_id, minute_start_ms)" +
                             ")";
 
-
+            st.execute(sqlMinute);
         } catch (SQLException e) {
             throw new RuntimeException("DB init failed: " + e.getMessage(), e);
         }
