@@ -48,16 +48,16 @@ public final class AbnormalEventDao {
 
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    long ts = rs.getLong("timestamp_ms");
-                    VitalType type = VitalType.valueOf(rs.getString("vital_type"));
-                    AlertLevel level = AlertLevel.valueOf(rs.getString("level"));
-                    double value = rs.getDouble("value");
-                    String msg = rs.getString("message");
-                    out.add(new AbnormalEvent(ts, type, level, value, msg));
+                    out.add(new AbnormalEvent(
+                            rs.getLong("timestamp_ms"),
+                            VitalType.valueOf(rs.getString("vital_type")),
+                            AlertLevel.valueOf(rs.getString("level")),
+                            rs.getDouble("value"),
+                            rs.getString("message")
+                    ));
                 }
             }
         }
-
         return out;
     }
 }

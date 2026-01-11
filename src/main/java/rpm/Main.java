@@ -11,6 +11,7 @@ import rpm.data.PatientManager;
 import rpm.data.MinuteAggregator;
 import rpm.model.Patient;
 import rpm.model.VitalSample;
+import rpm.notify.AudioAlertService;
 import rpm.notify.DailyDigestNotifier;
 import rpm.notify.EmailService;
 import rpm.notify.FileEmailService;
@@ -51,6 +52,7 @@ public class Main {
         ConfigStore configStore = new ConfigStore(Paths.get("data", "system.properties"));
         AuthService authService = new AuthService(userStore);
 
+        // email digest config
         boolean emailEnabled = configStore.getBool("email.enabled", true);
         String doctorEmail = configStore.getString("doctor.email", "doctor@hospital.com");
         int digestHour = configStore.getInt("digest.hour", 8);
@@ -58,6 +60,11 @@ public class Main {
 
         EmailService emailService = new FileEmailService(Path.of("outbox"));
         DailyDigestNotifier digest = new DailyDigestNotifier(emailService, alertEngine, doctorEmail);
+
+        // audio config (NEW)
+        boolean audioEnabled = configStore.getBool("audio.enabled", true);
+        boolean heartbeatEnabled = configStore.getBool("audio.heartbeat.enabled", false);
+        AudioAlertService audioAlert = new AudioAlertService(audioEnabled, heartbeatEnabled);
 
         ScheduledExecutorService exec = Executors.newSingleThreadScheduledExecutor();
 
@@ -79,11 +86,18 @@ public class Main {
                     VitalSample sample = sim.nextSample(now);
                     store.addSample(sample);
 
+                    // optional heartbeat tick (based on incoming HR)
+                    audioAlert.onHeartRate(sample.heartRate(), now);
+
                     MinuteAggregator agg = pm.aggregatorOf(id);
                     MinuteAggregator.AggregationResult result = agg.onSample(sample);
 
-                    // 1) abnormal events：任何时候发生都写库（不依赖 minuteRecord）
+                    // 1) abnormal events：发生就写库 + 音频提示（不依赖 minuteRecord）
                     if (result.abnormalEvents() != null && !result.abnormalEvents().isEmpty()) {
+
+                        // audio beep: WARNING=1, URGENT=3 (with cooldown)
+                        audioAlert.onAbnormalEvents(result.abnormalEvents(), now);
+
                         for (var e : result.abnormalEvents()) {
                             try {
                                 abnormalDao.insert(id, e);
@@ -120,6 +134,7 @@ public class Main {
             }
         }, 0, samplePeriodMs, TimeUnit.MILLISECONDS);
 
+        // send digest once per day (check every 60s)
         exec.scheduleAtFixedRate(new Runnable() {
             @Override
             public void run() {
