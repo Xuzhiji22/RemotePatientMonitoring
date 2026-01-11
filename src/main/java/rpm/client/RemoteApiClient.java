@@ -6,6 +6,9 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 
+import java.io.OutputStream;
+
+
 public class RemoteApiClient {
 
     private final String baseUrl;
@@ -42,9 +45,76 @@ public class RemoteApiClient {
         }
     }
 
+    public String postVitalSampleJson(String patientId,
+                                      long timestampMs,
+                                      double bodyTemp,
+                                      double heartRate,
+                                      double respiratoryRate,
+                                      double systolicBP,
+                                      double diastolicBP,
+                                      double ecgValue) throws Exception {
+
+        String json = "{"
+                + "\"patientId\":\"" + escapeJson(patientId) + "\","
+                + "\"timestampMs\":" + timestampMs + ","
+                + "\"bodyTemp\":" + bodyTemp + ","
+                + "\"heartRate\":" + heartRate + ","
+                + "\"respiratoryRate\":" + respiratoryRate + ","
+                + "\"systolicBP\":" + systolicBP + ","
+                + "\"diastolicBP\":" + diastolicBP + ","
+                + "\"ecgValue\":" + ecgValue
+                + "}";
+
+        return postJson(baseUrl + "/api/vitals", json);
+    }
+
+    private String postJson(String urlStr, String jsonBody) throws Exception {
+        URL url = new URL(urlStr);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setRequestMethod("POST");
+        conn.setConnectTimeout(8000);
+        conn.setReadTimeout(8000);
+        conn.setDoOutput(true);
+        conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+
+        byte[] bytes = jsonBody.getBytes(StandardCharsets.UTF_8);
+        try (OutputStream os = conn.getOutputStream()) {
+            os.write(bytes);
+        }
+
+        int code = conn.getResponseCode();
+        try (BufferedReader br = new BufferedReader(
+                new InputStreamReader(
+                        (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream(),
+                        StandardCharsets.UTF_8))) {
+
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) sb.append(line);
+            return sb.toString();
+        }
+    }
+
+    private static String escapeJson(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
+
+
     public static void main(String[] args) throws Exception {
         RemoteApiClient client = new RemoteApiClient("https://bioeng-rpm-app.impaas.uk");
+
         System.out.println("patients=" + client.getPatientsJson());
-        System.out.println("vitals(P1)=" + client.getLatestVitalsJson("P123", 5));
+
+        long ts = System.currentTimeMillis();
+        String postResp = client.postVitalSampleJson(
+                "P001",
+                ts,
+                36.8, 78.0, 15.0, 118.0, 79.0, 0.11
+        );
+        System.out.println("POST /api/vitals => " + postResp);
+
+        System.out.println("vitals(P001)=" + client.getLatestVitalsJson("P001", 5));
     }
+
 }
