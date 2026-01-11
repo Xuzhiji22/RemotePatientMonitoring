@@ -60,6 +60,12 @@ public final class DbInit {
                             ")";
 
             st.execute(sqlMinute);
+
+            String createMinuteIndex =
+                    "CREATE INDEX IF NOT EXISTS idx_minutes_patient_ts " +
+                            "ON minute_averages(patient_id, minute_start_ms DESC)";
+            st.execute(createMinuteIndex);
+
         } catch (SQLException e) {
             throw new RuntimeException("DB init failed: " + e.getMessage(), e);
         }
