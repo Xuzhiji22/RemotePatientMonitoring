@@ -95,7 +95,7 @@ public class RemoteApiClient {
 
         System.out.println("patients=" + client.getPatientsJson());
 
-        // 1) POST 一条 vitals（你已经有 /api/vitals，这里只是演示）
+
         long now = System.currentTimeMillis();
         String vitalBody =
                 "{"
@@ -111,7 +111,7 @@ public class RemoteApiClient {
         System.out.println("POST /api/vitals => " + client.postVitalSampleJson(vitalBody));
         System.out.println("vitals(P001)=" + client.getLatestVitalsJson("P001", 5));
 
-        // 2) POST 一条 minute average（这是关键：让 /api/minutes/latest 不再是空）
+
         long minuteStart = (now / 60000L) * 60000L;
         String minuteBody =
                 "{"

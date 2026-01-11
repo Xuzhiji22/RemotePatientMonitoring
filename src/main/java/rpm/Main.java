@@ -4,9 +4,11 @@ import rpm.alert.AlertEngine;
 import rpm.auth.AuthService;
 import rpm.auth.UserStore;
 import rpm.config.ConfigStore;
-import rpm.data.MinuteAggregator;
+import rpm.dao.AbnormalEventDao;
+import rpm.dao.MinuteAverageDao;
 import rpm.data.PatientDataStore;
 import rpm.data.PatientManager;
+import rpm.data.MinuteAggregator;
 import rpm.model.Patient;
 import rpm.model.VitalSample;
 import rpm.notify.DailyDigestNotifier;
@@ -14,7 +16,6 @@ import rpm.notify.EmailService;
 import rpm.notify.FileEmailService;
 import rpm.sim.Simulator;
 import rpm.ui.LoginFrame;
-import rpm.dao.MinuteAverageDao;
 
 import javax.swing.*;
 import java.nio.file.Path;
@@ -24,8 +25,6 @@ import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-
-
 
 public class Main {
     public static void main(String[] args) {
@@ -48,21 +47,12 @@ public class Main {
 
         PatientManager pm = new PatientManager(patients, maxSeconds, sampleHz, alertEngine);
 
-        // user + config storage (for admin features)
         UserStore userStore = new UserStore(Paths.get("data", "users.properties"));
         ConfigStore configStore = new ConfigStore(Paths.get("data", "system.properties"));
         AuthService authService = new AuthService(userStore);
 
-        // Daily digest email (new)
-        // Suggested keys in data/system.properties:
-        // email.enabled=true
-        // doctor.email=doctor@hospital.com
-        // digest.hour=8
-        // digest.minute=0
-
         boolean emailEnabled = configStore.getBool("email.enabled", true);
         String doctorEmail = configStore.getString("doctor.email", "doctor@hospital.com");
-
         int digestHour = configStore.getInt("digest.hour", 8);
         int digestMinute = configStore.getInt("digest.minute", 0);
 
@@ -71,9 +61,10 @@ public class Main {
 
         ScheduledExecutorService exec = Executors.newSingleThreadScheduledExecutor();
 
+        // DAO：只 new 一次复用
         MinuteAverageDao minuteDao = new MinuteAverageDao();
+        AbnormalEventDao abnormalDao = new AbnormalEventDao();
 
-        // background sampling: every 200ms (unchanged sampling + UI/history logic)
         exec.scheduleAtFixedRate(new Runnable() {
             @Override
             public void run() {
@@ -88,21 +79,31 @@ public class Main {
                     VitalSample sample = sim.nextSample(now);
                     store.addSample(sample);
 
-                    // minute aggregation -> 24h history
                     MinuteAggregator agg = pm.aggregatorOf(id);
                     MinuteAggregator.AggregationResult result = agg.onSample(sample);
 
+                    // 1) abnormal events：任何时候发生都写库（不依赖 minuteRecord）
+                    if (result.abnormalEvents() != null && !result.abnormalEvents().isEmpty()) {
+                        for (var e : result.abnormalEvents()) {
+                            try {
+                                abnormalDao.insert(id, e);
+                            } catch (Exception ex) {
+                                System.err.println("abnormalDao.insert failed: " + ex.getMessage());
+                            }
+                        }
+                    }
+
+                    // 2) minute average：跨分钟才会产出
                     if (result.minuteRecord() != null) {
                         var mr = result.minuteRecord();
                         pm.historyOf(id).addMinuteRecord(mr);
 
                         try {
                             minuteDao.upsert(id, mr);
-                        } catch (Exception e) {
-                            System.err.println("minuteDao.upsert failed: " + e.getMessage());
+                        } catch (Exception ex) {
+                            System.err.println("minuteDao.upsert failed: " + ex.getMessage());
                         }
 
-                        // collect digest stats only (no immediate emails)
                         if (emailEnabled) {
                             digest.onMinuteAverage(
                                     p,
@@ -119,7 +120,6 @@ public class Main {
             }
         }, 0, samplePeriodMs, TimeUnit.MILLISECONDS);
 
-        // send digest once per day (check every 60s)
         exec.scheduleAtFixedRate(new Runnable() {
             @Override
             public void run() {
