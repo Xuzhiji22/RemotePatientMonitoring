@@ -11,7 +11,7 @@ public final class DbInit {
         try (Connection c = Db.getConnection();
              Statement st = c.createStatement()) {
 
-            // 1) patients：匹配 rpm.model.Patient
+            // 1) patients
             String createPatients =
                     "CREATE TABLE IF NOT EXISTS patients (" +
                             "patient_id VARCHAR(64) PRIMARY KEY, " +
@@ -23,7 +23,7 @@ public final class DbInit {
                             ")";
             st.execute(createPatients);
 
-            // 2) vital_samples：匹配 rpm.model.VitalSample（带 patient_id 外键 + timestamp）
+            // 2) vital_samples
             String createVitals =
                     "CREATE TABLE IF NOT EXISTS vital_samples (" +
                             "id BIGSERIAL PRIMARY KEY, " +
@@ -38,11 +38,33 @@ public final class DbInit {
                             ")";
             st.execute(createVitals);
 
-            // 3) index：加速按 patient + 时间查询
+            // 3) index：
             String createIndex =
                     "CREATE INDEX IF NOT EXISTS idx_vitals_patient_ts " +
                             "ON vital_samples(patient_id, ts_ms DESC)";
             st.execute(createIndex);
+
+            // minute_averages: one row per patient per minute
+            String sqlMinute =
+                    "CREATE TABLE IF NOT EXISTS minute_averages (" +
+                            "patient_id VARCHAR(64) NOT NULL," +
+                            "minute_start_ms BIGINT NOT NULL," +
+                            "avg_temp DOUBLE PRECISION NOT NULL," +
+                            "avg_hr DOUBLE PRECISION NOT NULL," +
+                            "avg_rr DOUBLE PRECISION NOT NULL," +
+                            "avg_sys DOUBLE PRECISION NOT NULL," +
+                            "avg_dia DOUBLE PRECISION NOT NULL," +
+                            "sample_count INT NOT NULL," +
+                            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()," +
+                            "PRIMARY KEY (patient_id, minute_start_ms)" +
+                            ")";
+
+            st.execute(sqlMinute);
+
+            String createMinuteIndex =
+                    "CREATE INDEX IF NOT EXISTS idx_minutes_patient_ts " +
+                            "ON minute_averages(patient_id, minute_start_ms DESC)";
+            st.execute(createMinuteIndex);
 
         } catch (SQLException e) {
             throw new RuntimeException("DB init failed: " + e.getMessage(), e);

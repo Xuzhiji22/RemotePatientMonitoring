@@ -14,6 +14,7 @@ import rpm.notify.EmailService;
 import rpm.notify.FileEmailService;
 import rpm.sim.Simulator;
 import rpm.ui.LoginFrame;
+import rpm.dao.MinuteAverageDao;
 
 import javax.swing.*;
 import java.nio.file.Path;
@@ -23,6 +24,8 @@ import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+
+
 
 public class Main {
     public static void main(String[] args) {
@@ -68,6 +71,8 @@ public class Main {
 
         ScheduledExecutorService exec = Executors.newSingleThreadScheduledExecutor();
 
+        MinuteAverageDao minuteDao = new MinuteAverageDao();
+
         // background sampling: every 200ms (unchanged sampling + UI/history logic)
         exec.scheduleAtFixedRate(new Runnable() {
             @Override
@@ -90,6 +95,12 @@ public class Main {
                     if (result.minuteRecord() != null) {
                         var mr = result.minuteRecord();
                         pm.historyOf(id).addMinuteRecord(mr);
+
+                        try {
+                            minuteDao.upsert(id, mr);
+                        } catch (Exception e) {
+                            System.err.println("minuteDao.upsert failed: " + e.getMessage());
+                        }
 
                         // collect digest stats only (no immediate emails)
                         if (emailEnabled) {
