@@ -66,6 +66,25 @@ public final class DbInit {
                             "ON minute_averages(patient_id, minute_start_ms DESC)";
             st.execute(createMinuteIndex);
 
+            // abnormal_events: record abnormal instances
+            String sqlAbnormal =
+                    "CREATE TABLE IF NOT EXISTS abnormal_events (" +
+                            "id BIGSERIAL PRIMARY KEY, " +
+                            "patient_id VARCHAR(64) NOT NULL REFERENCES patients(patient_id) ON DELETE CASCADE, " +
+                            "timestamp_ms BIGINT NOT NULL, " +
+                            "vital_type VARCHAR(32) NOT NULL, " +
+                            "level VARCHAR(16) NOT NULL, " +
+                            "value DOUBLE PRECISION NOT NULL, " +
+                            "message VARCHAR(512)" +
+                            ")";
+            st.execute(sqlAbnormal);
+
+            String createAbnormalIndex =
+                    "CREATE INDEX IF NOT EXISTS idx_abnormal_patient_ts " +
+                            "ON abnormal_events(patient_id, timestamp_ms DESC)";
+            st.execute(createAbnormalIndex);
+
+
         } catch (SQLException e) {
             throw new RuntimeException("DB init failed: " + e.getMessage(), e);
         }

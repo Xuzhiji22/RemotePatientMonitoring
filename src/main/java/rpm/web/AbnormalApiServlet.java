@@ -1,8 +1,8 @@
 package rpm.web;
 
 import com.google.gson.Gson;
-import rpm.dao.MinuteAverageDao;
-import rpm.data.MinuteRecord;
+import rpm.dao.AbnormalEventDao;
+import rpm.data.AbnormalEvent;
 
 import javax.servlet.annotation.WebServlet;
 import javax.servlet.http.HttpServlet;
@@ -14,22 +14,22 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
-@WebServlet(urlPatterns = {"/api/minutes/latest", "/api/minutes"})
-public class MinutesApiServlet extends HttpServlet {
+@WebServlet(urlPatterns = {"/api/abnormal/latest", "/api/abnormal"})
+public class AbnormalApiServlet extends HttpServlet {
 
-    private final MinuteAverageDao minuteDao = new MinuteAverageDao();
+    private final AbnormalEventDao abnormalDao = new AbnormalEventDao();
     private final Gson gson = new Gson();
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws IOException {
-        // GET /api/minutes/latest?patientId=...&limit=...
+        // GET /api/abnormal/latest?patientId=...&limit=...
         resp.setCharacterEncoding("utf-8");
         resp.setContentType("application/json; charset=utf-8");
 
         String patientId = req.getParameter("patientId");
         String limitStr = req.getParameter("limit");
 
-        int limit = 60;
+        int limit = 50;
         if (limitStr != null) {
             try { limit = Integer.parseInt(limitStr); } catch (Exception ignored) {}
         }
@@ -41,17 +41,17 @@ public class MinutesApiServlet extends HttpServlet {
         }
 
         try {
-            List<MinuteRecord> rows = minuteDao.latest(patientId.trim(), limit);
-            resp.getWriter().write(gson.toJson(rows));
+            List<AbnormalEvent> events = abnormalDao.latest(patientId.trim(), limit);
+            resp.getWriter().write(gson.toJson(events));
         } catch (Exception e) {
             resp.setStatus(500);
-            resp.getWriter().write(gson.toJson(new ErrorMsg("MINUTES_API_ERROR", e.getMessage())));
+            resp.getWriter().write(gson.toJson(new ErrorMsg("ABNORMAL_API_ERROR", e.getMessage())));
         }
     }
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws IOException {
-        // POST /api/minutes  body: { patientId, minuteStartMs, avgTemp, avgHR, avgRR, avgSys, avgDia, sampleCount }
+        // POST /api/abnormal  body: { patientId, timestampMs, vitalType, level, value, message }
         resp.setCharacterEncoding("utf-8");
         resp.setContentType("application/json; charset=utf-8");
 
@@ -63,22 +63,20 @@ public class MinutesApiServlet extends HttpServlet {
                 return;
             }
 
-            MinuteRecord mr = new MinuteRecord(
-                    msg.minuteStartMs,
-                    msg.avgTemp,
-                    msg.avgHR,
-                    msg.avgRR,
-                    msg.avgSys,
-                    msg.avgDia,
-                    msg.sampleCount
+            AbnormalEvent e = new AbnormalEvent(
+                    msg.timestampMs,
+                    rpm.model.VitalType.valueOf(msg.vitalType),
+                    rpm.model.AlertLevel.valueOf(msg.level),
+                    msg.value,
+                    msg.message
             );
 
-            minuteDao.upsert(msg.patientId.trim(), mr);
+            abnormalDao.insert(msg.patientId.trim(), e);
 
             resp.getWriter().write(gson.toJson(new OkMsg(true)));
         } catch (Exception e) {
             resp.setStatus(500);
-            resp.getWriter().write(gson.toJson(new ErrorMsg("MINUTES_INGEST_ERROR", e.getMessage())));
+            resp.getWriter().write(gson.toJson(new ErrorMsg("ABNORMAL_INGEST_ERROR", e.getMessage())));
         }
     }
 
@@ -95,13 +93,11 @@ public class MinutesApiServlet extends HttpServlet {
 
     static final class PostMsg {
         String patientId;
-        long minuteStartMs;
-        double avgTemp;
-        double avgHR;
-        double avgRR;
-        double avgSys;
-        double avgDia;
-        int sampleCount;
+        long timestampMs;
+        String vitalType;
+        String level;
+        double value;
+        String message;
     }
 
     static final class OkMsg {
