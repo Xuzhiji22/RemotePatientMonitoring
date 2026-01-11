@@ -45,6 +45,6 @@ public class RemoteApiClient {
     public static void main(String[] args) throws Exception {
         RemoteApiClient client = new RemoteApiClient("https://bioeng-rpm-app.impaas.uk");
         System.out.println("patients=" + client.getPatientsJson());
-        System.out.println("vitals(P1)=" + client.getLatestVitalsJson("P1", 5));
+        System.out.println("vitals(P1)=" + client.getLatestVitalsJson("P123", 5));
     }
 }
