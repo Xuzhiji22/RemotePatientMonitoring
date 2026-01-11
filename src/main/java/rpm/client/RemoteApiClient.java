@@ -136,7 +136,7 @@ public class RemoteApiClient {
                 "{" +
                         "\"patientId\":\"" + patientId + "\"," +
                         "\"timestampMs\":" + now + "," +
-                        "\"vitalType\":\"HR\"," +
+                        "\"vitalType\":\"HEART_RATE\"," +
                         "\"level\":\"URGENT\"," +
                         "\"value\":180.0," +
                         "\"message\":\"HR above urgent threshold\"" +
