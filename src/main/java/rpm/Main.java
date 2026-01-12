@@ -6,9 +6,9 @@ import rpm.auth.UserStore;
 import rpm.config.ConfigStore;
 import rpm.dao.AbnormalEventDao;
 import rpm.dao.MinuteAverageDao;
+import rpm.data.MinuteAggregator;
 import rpm.data.PatientDataStore;
 import rpm.data.PatientManager;
-import rpm.data.MinuteAggregator;
 import rpm.model.Patient;
 import rpm.model.VitalSample;
 import rpm.notify.AudioAlertService;
@@ -17,17 +17,27 @@ import rpm.notify.EmailService;
 import rpm.notify.FileEmailService;
 import rpm.sim.Simulator;
 import rpm.ui.LoginFrame;
+import rpm.db.Db;
 
 import javax.swing.*;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.sql.Connection;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * Level-3 friendly startup:
+ * - On Tsuru (cloud): PG* env vars exist -> DB enabled -> writes to Postgres.
+ * - On local machine: PG* usually missing -> DB auto-disabled -> no spam errors.
+ *
+ * UI still runs locally. DB persistence is only guaranteed when DB is enabled.
+ */
 public class Main {
+
     public static void main(String[] args) {
         int maxSeconds = 300;
         int sampleHz = 5;
@@ -48,30 +58,48 @@ public class Main {
 
         PatientManager pm = new PatientManager(patients, maxSeconds, sampleHz, alertEngine);
 
+        // user + config storage
         UserStore userStore = new UserStore(Paths.get("data", "users.properties"));
         ConfigStore configStore = new ConfigStore(Paths.get("data", "system.properties"));
         AuthService authService = new AuthService(userStore);
 
-        // email digest config
-        boolean emailEnabled = configStore.getBool("email.enabled", true);
-        String doctorEmail = configStore.getString("doctor.email", "doctor@hospital.com");
-        int digestHour = configStore.getInt("digest.hour", 8);
-        int digestMinute = configStore.getInt("digest.minute", 0);
+        // ===== Email digest (optional) =====
+        final boolean emailEnabled = configStore.getBool("email.enabled", true);
+        final String doctorEmail = configStore.getString("doctor.email", "doctor@hospital.com");
+        final int digestHour = configStore.getInt("digest.hour", 8);
+        final int digestMinute = configStore.getInt("digest.minute", 0);
 
         EmailService emailService = new FileEmailService(Path.of("outbox"));
         DailyDigestNotifier digest = new DailyDigestNotifier(emailService, alertEngine, doctorEmail);
 
-        // audio config (NEW)
-        boolean audioEnabled = configStore.getBool("audio.enabled", true);
-        boolean heartbeatEnabled = configStore.getBool("audio.heartbeat.enabled", false);
-        AudioAlertService audioAlert = new AudioAlertService(audioEnabled, heartbeatEnabled);
+        // ===== Audio (optional) =====
+        final boolean audioEnabledFromCfg = configStore.getBool("audio.enabled", false);
+        final boolean heartbeatEnabled = configStore.getBool("audio.heartbeat.enabled", false);
+
+        // ===== DB enabled flag (optional) =====
+        // IMPORTANT: compute ONCE so it's effectively final for inner classes
+        final boolean dbEnabled = configStore.getBool("db.enabled", true) && probeDatabaseOnce();
+
+        // If DB is not available locally, also silence audio to avoid noisy runs
+        final boolean audioEnabled = dbEnabled ? audioEnabledFromCfg : false;
+        if (!dbEnabled && audioEnabledFromCfg) {
+            System.out.println("[Main] DB not available -> auto-disabling audio to avoid repeated beeps.");
+        }
+
+        final AudioAlertService audioAlert = new AudioAlertService(audioEnabled, heartbeatEnabled);
+
+        // DAO: create only if DB enabled
+        final MinuteAverageDao minuteDao = dbEnabled ? new MinuteAverageDao() : null;
+        final AbnormalEventDao abnormalDao = dbEnabled ? new AbnormalEventDao() : null;
+
+        System.out.println("[Main] db.enabled=" + dbEnabled
+                + " | email.enabled=" + emailEnabled
+                + " | audio.enabled=" + audioEnabled
+                + " | heartbeat.enabled=" + heartbeatEnabled);
 
         ScheduledExecutorService exec = Executors.newSingleThreadScheduledExecutor();
 
-        // DAO：只 new 一次复用
-        MinuteAverageDao minuteDao = new MinuteAverageDao();
-        AbnormalEventDao abnormalDao = new AbnormalEventDao();
-
+        // background sampling: every 200ms
         exec.scheduleAtFixedRate(new Runnable() {
             @Override
             public void run() {
@@ -86,38 +114,39 @@ public class Main {
                     VitalSample sample = sim.nextSample(now);
                     store.addSample(sample);
 
-                    // optional heartbeat tick (based on incoming HR)
-                    audioAlert.onHeartRate(sample.heartRate(), now);
-
                     MinuteAggregator agg = pm.aggregatorOf(id);
                     MinuteAggregator.AggregationResult result = agg.onSample(sample);
 
-                    // 1) abnormal events：发生就写库 + 音频提示（不依赖 minuteRecord）
-                    if (result.abnormalEvents() != null && !result.abnormalEvents().isEmpty()) {
+                    // Audio: abnormal beeps + optional heartbeat
+                    audioAlert.onAbnormalEvents(result.abnormalEvents(), now);
+                    audioAlert.onHeartRate(sample.heartRate(), now);
 
-                        // audio beep: WARNING=1, URGENT=3 (with cooldown)
-                        audioAlert.onAbnormalEvents(result.abnormalEvents(), now);
-
+                    // 1) abnormal events: write DB only if enabled
+                    if (dbEnabled && result.abnormalEvents() != null && !result.abnormalEvents().isEmpty()) {
                         for (var e : result.abnormalEvents()) {
                             try {
                                 abnormalDao.insert(id, e);
                             } catch (Exception ex) {
-                                System.err.println("abnormalDao.insert failed: " + ex.getMessage());
+                                // do not spam stack traces
+                                System.err.println("[Main] abnormalDao.insert failed: " + ex.getMessage());
                             }
                         }
                     }
 
-                    // 2) minute average：跨分钟才会产出
+                    // 2) minute average: write DB only if enabled
                     if (result.minuteRecord() != null) {
                         var mr = result.minuteRecord();
                         pm.historyOf(id).addMinuteRecord(mr);
 
-                        try {
-                            minuteDao.upsert(id, mr);
-                        } catch (Exception ex) {
-                            System.err.println("minuteDao.upsert failed: " + ex.getMessage());
+                        if (dbEnabled) {
+                            try {
+                                minuteDao.upsert(id, mr);
+                            } catch (Exception ex) {
+                                System.err.println("[Main] minuteDao.upsert failed: " + ex.getMessage());
+                            }
                         }
 
+                        // digest stats (no immediate emails)
                         if (emailEnabled) {
                             digest.onMinuteAverage(
                                     p,
@@ -147,6 +176,7 @@ public class Main {
             }
         }, 0, 60, TimeUnit.SECONDS);
 
+        // UI
         SwingUtilities.invokeLater(new Runnable() {
             @Override
             public void run() {
@@ -154,5 +184,20 @@ public class Main {
                 login.setVisible(true);
             }
         });
+    }
+
+    /**
+     * Try DB connection ONCE to decide whether DB should be enabled.
+     * Avoids console spam when PG* env vars are missing locally.
+     */
+    private static boolean probeDatabaseOnce() {
+        try (Connection c = Db.getConnection()) {
+            return true;
+        } catch (Exception e) {
+            System.out.println("[Main] Database not available: " + e.getMessage());
+            System.out.println("[Main] Tip: On Tsuru, bind Postgres service so PG* env vars are injected. " +
+                    "Locally, set PG* env vars or set db.enabled=false.");
+            return false;
+        }
     }
 }
