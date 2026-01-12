@@ -1,5 +1,6 @@
 package rpm.notify;
-
+import javax.sound.sampled.*;
+import java.io.InputStream;
 import rpm.data.AbnormalEvent;
 import rpm.model.AlertLevel;
 
@@ -76,8 +77,31 @@ public class AudioAlertService {
 
     private void beep(int times) {
         for (int i = 0; i < times; i++) {
-            Toolkit.getDefaultToolkit().beep();
-            try { Thread.sleep(120); } catch (InterruptedException ignored) {}
+            playWav("/alert.wav");
+            try {
+                Thread.sleep(300);   // 间隔比 120ms 长一点，声音更清晰
+            } catch (InterruptedException ignored) {
+            }
+        }
+    }
+
+    private void playWav(String resourcePath) {
+        try {
+            InputStream is = getClass().getResourceAsStream(resourcePath);
+            if (is == null) {
+                System.err.println("Sound not found: " + resourcePath);
+                return;
+            }
+
+            AudioInputStream audio = AudioSystem.getAudioInputStream(is);
+            Clip clip = AudioSystem.getClip();
+            clip.open(audio);
+            clip.start();
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 }
+
+
+
