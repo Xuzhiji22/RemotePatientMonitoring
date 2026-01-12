@@ -1,92 +1,69 @@
 package rpm.db;
 
 import java.sql.Connection;
-import java.sql.SQLException;
 import java.sql.Statement;
 
 public final class DbInit {
+
     private DbInit() {}
 
-    public static void init() {
+    public static void init() throws Exception {
         try (Connection c = Db.getConnection();
              Statement st = c.createStatement()) {
 
-            // 1) patients
-            String createPatients =
+            // patients
+            st.executeUpdate(
                     "CREATE TABLE IF NOT EXISTS patients (" +
-                            "patient_id VARCHAR(64) PRIMARY KEY, " +
-                            "name VARCHAR(256) NOT NULL, " +
-                            "age INT NOT NULL, " +
-                            "ward VARCHAR(128), " +
-                            "email VARCHAR(256), " +
-                            "emergency_contact VARCHAR(256)" +
-                            ")";
-            st.execute(createPatients);
+                            "patient_id TEXT PRIMARY KEY," +
+                            "name TEXT NOT NULL," +
+                            "age INT NOT NULL," +
+                            "ward TEXT," +
+                            "email TEXT," +
+                            "emergency_contact TEXT" +
+                            ")"
+            );
 
-            // 2) vital_samples
-            String createVitals =
+            // vital_samples
+            st.executeUpdate(
                     "CREATE TABLE IF NOT EXISTS vital_samples (" +
-                            "id BIGSERIAL PRIMARY KEY, " +
-                            "patient_id VARCHAR(64) NOT NULL REFERENCES patients(patient_id) ON DELETE CASCADE, " +
-                            "ts_ms BIGINT NOT NULL, " +
-                            "body_temp DOUBLE PRECISION, " +
-                            "heart_rate DOUBLE PRECISION, " +
-                            "respiratory_rate DOUBLE PRECISION, " +
-                            "systolic_bp DOUBLE PRECISION, " +
-                            "diastolic_bp DOUBLE PRECISION, " +
-                            "ecg_value DOUBLE PRECISION" +
-                            ")";
-            st.execute(createVitals);
+                            "patient_id TEXT NOT NULL," +
+                            "ts_ms BIGINT NOT NULL," +
+                            "temp DOUBLE PRECISION," +
+                            "hr DOUBLE PRECISION," +
+                            "rr DOUBLE PRECISION," +
+                            "sys DOUBLE PRECISION," +
+                            "dia DOUBLE PRECISION," +
+                            "ecg DOUBLE PRECISION," +
+                            "PRIMARY KEY (patient_id, ts_ms)" +
+                            ")"
+            );
 
-            // 3) index：
-            String createIndex =
-                    "CREATE INDEX IF NOT EXISTS idx_vitals_patient_ts " +
-                            "ON vital_samples(patient_id, ts_ms DESC)";
-            st.execute(createIndex);
-
-            // minute_averages: one row per patient per minute
-            String sqlMinute =
+            // minute_averages
+            st.executeUpdate(
                     "CREATE TABLE IF NOT EXISTS minute_averages (" +
-                            "patient_id VARCHAR(64) NOT NULL," +
+                            "patient_id TEXT NOT NULL," +
                             "minute_start_ms BIGINT NOT NULL," +
-                            "avg_temp DOUBLE PRECISION NOT NULL," +
-                            "avg_hr DOUBLE PRECISION NOT NULL," +
-                            "avg_rr DOUBLE PRECISION NOT NULL," +
-                            "avg_sys DOUBLE PRECISION NOT NULL," +
-                            "avg_dia DOUBLE PRECISION NOT NULL," +
-                            "sample_count INT NOT NULL," +
-                            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()," +
+                            "avg_temp DOUBLE PRECISION," +
+                            "avg_hr DOUBLE PRECISION," +
+                            "avg_rr DOUBLE PRECISION," +
+                            "avg_sys DOUBLE PRECISION," +
+                            "avg_dia DOUBLE PRECISION," +
+                            "sample_count INT," +
                             "PRIMARY KEY (patient_id, minute_start_ms)" +
-                            ")";
+                            ")"
+            );
 
-            st.execute(sqlMinute);
-
-            String createMinuteIndex =
-                    "CREATE INDEX IF NOT EXISTS idx_minutes_patient_ts " +
-                            "ON minute_averages(patient_id, minute_start_ms DESC)";
-            st.execute(createMinuteIndex);
-
-            // abnormal_events: record abnormal instances
-            String sqlAbnormal =
+            // abnormal_events（如果你有用到就保留；没有也不影响）
+            st.executeUpdate(
                     "CREATE TABLE IF NOT EXISTS abnormal_events (" +
-                            "id BIGSERIAL PRIMARY KEY, " +
-                            "patient_id VARCHAR(64) NOT NULL REFERENCES patients(patient_id) ON DELETE CASCADE, " +
-                            "timestamp_ms BIGINT NOT NULL, " +
-                            "vital_type VARCHAR(32) NOT NULL, " +
-                            "level VARCHAR(16) NOT NULL, " +
-                            "value DOUBLE PRECISION NOT NULL, " +
-                            "message VARCHAR(512)" +
-                            ")";
-            st.execute(sqlAbnormal);
-
-            String createAbnormalIndex =
-                    "CREATE INDEX IF NOT EXISTS idx_abnormal_patient_ts " +
-                            "ON abnormal_events(patient_id, timestamp_ms DESC)";
-            st.execute(createAbnormalIndex);
-
-
-        } catch (SQLException e) {
-            throw new RuntimeException("DB init failed: " + e.getMessage(), e);
+                            "patient_id TEXT NOT NULL," +
+                            "ts_ms BIGINT NOT NULL," +
+                            "level TEXT," +
+                            "vital TEXT," +
+                            "value DOUBLE PRECISION," +
+                            "message TEXT" +
+                            ")"
+            );
         }
     }
 }

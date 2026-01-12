@@ -5,6 +5,7 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 
 public class Db {
+
     public static Connection getConnection() throws SQLException {
 
         try {
@@ -23,7 +24,13 @@ public class Db {
             throw new SQLException("Missing PG* env vars. Is Postgres service bound to this app?");
         }
 
-        String url = "jdbc:postgresql://" + host + ":" + port + "/" + db;
+        // Cloud-friendly JDBC URL: SSL + timeouts to avoid hanging / vague failures
+        String url = "jdbc:postgresql://" + host + ":" + port + "/" + db
+                + "?sslmode=require"
+                + "&connectTimeout=5"
+                + "&socketTimeout=10"
+                + "&tcpKeepAlive=true";
+
         return DriverManager.getConnection(url, user, pass);
     }
 }

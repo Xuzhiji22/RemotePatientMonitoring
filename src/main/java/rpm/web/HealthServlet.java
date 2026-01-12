@@ -33,16 +33,28 @@ public class HealthServlet extends HttpServlet {
         resp.setContentType("text/plain; charset=utf-8");
 
         boolean cloud = hasPgEnv();
+
         resp.getWriter().println("OK");
         resp.getWriter().println("mode=" + (cloud ? "CLOUD" : "LOCAL"));
 
-        // LOCAL: do not attempt DB init/connection; keep UI runnable
         if (!cloud) {
             resp.getWriter().println("db=DISABLED (no PG env vars)");
             return;
         }
 
-        // CLOUD: try DB connection and report
+        // Print connection env (no secrets)
+        String host = System.getenv("PGHOST");
+        String port = System.getenv("PGPORT");
+        String db   = System.getenv("PGDATABASE");
+        String user = System.getenv("PGUSER");
+        String pass = System.getenv("PGPASSWORD");
+
+        resp.getWriter().println("pg.host=" + host);
+        resp.getWriter().println("pg.port=" + port);
+        resp.getWriter().println("pg.db=" + db);
+        resp.getWriter().println("pg.user=" + user);
+        resp.getWriter().println("pg.pwLen=" + (pass == null ? 0 : pass.length()));
+
         try (Connection c = Db.getConnection()) {
             boolean connected = (c != null && !c.isClosed());
             resp.getWriter().println("db=" + (connected ? "CONNECTED" : "DISCONNECTED"));
@@ -56,9 +68,10 @@ public class HealthServlet extends HttpServlet {
                     }
                 }
             }
+
         } catch (Exception e) {
-            // still return 200, but clearly indicate DB error
             resp.getWriter().println("db=ERROR");
+            resp.getWriter().println("ex=" + e.getClass().getName());
             resp.getWriter().println("message=" + e.getMessage());
         }
     }
