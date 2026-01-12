@@ -1,6 +1,5 @@
 package rpm.web;
 
-import com.google.gson.Gson;
 import rpm.dao.PatientDao;
 import rpm.model.Patient;
 
@@ -14,26 +13,56 @@ import java.util.List;
 @WebServlet(urlPatterns = {"/api/patients"})
 public class PatientsApiServlet extends HttpServlet {
 
-    private final PatientDao patientDao = new PatientDao();
-    private final Gson gson = new Gson();
+    private static boolean hasPgEnv() {
+        return System.getenv("PGHOST") != null
+                && System.getenv("PGPORT") != null
+                && System.getenv("PGDATABASE") != null
+                && System.getenv("PGUSER") != null
+                && System.getenv("PGPASSWORD") != null;
+    }
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws IOException {
-        resp.setCharacterEncoding("utf-8");
         resp.setContentType("application/json; charset=utf-8");
 
+        // LOCAL 模式：DB disabled -> 返回空数组（这是预期行为）
+        if (!hasPgEnv()) {
+            resp.getWriter().write("[]");
+            return;
+        }
+
         try {
-            List<Patient> patients = patientDao.listAll();
-            resp.getWriter().write(gson.toJson(patients));
+            PatientDao dao = new PatientDao();
+            List<Patient> patients = dao.listAll();
+
+            resp.getWriter().write(toJson(patients));
         } catch (Exception e) {
             resp.setStatus(500);
-            resp.getWriter().write(gson.toJson(new ErrorMsg("PATIENTS_API_ERROR", e.getMessage())));
+            resp.getWriter().write("{\"error\":\"" + escape(e.getMessage()) + "\"}");
         }
     }
 
-    static class ErrorMsg {
-        String code;
-        String message;
-        ErrorMsg(String code, String message) { this.code = code; this.message = message; }
+    private static String toJson(List<Patient> patients) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("[");
+        for (int i = 0; i < patients.size(); i++) {
+            Patient p = patients.get(i);
+            if (i > 0) sb.append(",");
+            sb.append("{")
+                    .append("\"patientId\":\"").append(escape(p.patientId())).append("\",")
+                    .append("\"name\":\"").append(escape(p.name())).append("\",")
+                    .append("\"age\":").append(p.age()).append(",")
+                    .append("\"ward\":\"").append(escape(p.ward())).append("\",")
+                    .append("\"email\":\"").append(escape(p.email())).append("\",")
+                    .append("\"emergencyContact\":\"").append(escape(p.emergencyContact())).append("\"")
+                    .append("}");
+        }
+        sb.append("]");
+        return sb.toString();
+    }
+
+    private static String escape(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 }

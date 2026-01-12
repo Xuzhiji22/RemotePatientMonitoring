@@ -55,30 +55,33 @@ public final class PatientDao {
         }
     }
 
-    public List<Patient> listAll() {
-        List<Patient> out = new ArrayList<>();
-        if (!hasPgEnv()) return out;
+    public java.util.List<rpm.model.Patient> listAll() {
+        String sql = "SELECT patient_id, name, age, ward, email, emergency_contact " +
+                "FROM patients ORDER BY patient_id ASC";
 
-        String sql = "SELECT patient_id, name, age, ward, email, emergency_contact FROM patients ORDER BY patient_id";
+        java.util.List<rpm.model.Patient> out = new java.util.ArrayList<>();
 
-        try (Connection c = Db.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql);
-             ResultSet rs = ps.executeQuery()) {
+        try (java.sql.Connection c = rpm.db.Db.getConnection();
+             java.sql.PreparedStatement ps = c.prepareStatement(sql);
+             java.sql.ResultSet rs = ps.executeQuery()) {
 
             while (rs.next()) {
-                String id = rs.getString("patient_id");
-                String name = rs.getString("name");
-                int age = rs.getInt("age");
-                String ward = rs.getString("ward");
-                String email = rs.getString("email");
-                String ec = rs.getString("emergency_contact");
-
-                out.add(new Patient(id, name, age, ward, email, ec));
+                rpm.model.Patient p = new rpm.model.Patient(
+                        rs.getString("patient_id"),
+                        rs.getString("name"),
+                        rs.getInt("age"),
+                        rs.getString("ward"),
+                        rs.getString("email"),
+                        rs.getString("emergency_contact")
+                );
+                out.add(p);
             }
-        } catch (Exception ignored) {
-            // swallow for local-friendly behavior
+
+        } catch (java.sql.SQLException e) {
+            throw new RuntimeException("PatientDao.listAll failed: " + e.getMessage(), e);
         }
 
         return out;
     }
+
 }

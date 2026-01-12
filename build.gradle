@@ -44,8 +44,14 @@ dependencies {
     testImplementation 'org.junit.jupiter:junit-jupiter'
     implementation 'org.postgresql:postgresql:42.7.3'
     implementation 'com.google.code.gson:gson:2.11.0'
+    implementation 'org.eclipse.jetty:jetty-jndi:9.4.24.v20191120'
 
 }
+
+gretty {
+    jvmArgs = ['-Djava.naming.factory.initial=org.eclipse.jetty.jndi.InitialContextFactory']
+}
+
 
 test {
     useJUnitPlatform()

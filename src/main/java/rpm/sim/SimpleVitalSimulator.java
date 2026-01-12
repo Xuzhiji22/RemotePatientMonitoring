@@ -3,11 +3,11 @@ package rpm.sim;
 import rpm.model.VitalSample;
 import rpm.model.Patient;
 import java.util.Random;
-import rpm.dao.VitalSampleDao;
+
 
 public class SimpleVitalSimulator implements Simulator {
 
-    private final VitalSampleDao vitalDao = new VitalSampleDao();
+
     private final Random rng = new Random();
     private SimulationMode mode = SimulationMode.NORMAL;
 
@@ -43,12 +43,6 @@ public class SimpleVitalSimulator implements Simulator {
         phase += 0.20;
 
         VitalSample sample = new VitalSample(nowMs, temp, hr, rr, sys, dia, ecg);
-
-        try {
-            vitalDao.insert(patient.patientId(), sample);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
 
         return sample;
     }
