@@ -1,6 +1,5 @@
 package rpm.web;
 
-import com.google.gson.Gson;
 import rpm.dao.MinuteAverageDao;
 import rpm.data.MinuteRecord;
 
@@ -8,110 +7,75 @@ import javax.servlet.annotation.WebServlet;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
+import java.sql.SQLException;
 import java.util.List;
 
-@WebServlet(urlPatterns = {"/api/minutes/latest", "/api/minutes"})
+@WebServlet(urlPatterns = {"/api/minutes/range"})
 public class MinutesApiServlet extends HttpServlet {
 
-    private final MinuteAverageDao minuteDao = new MinuteAverageDao();
-    private final Gson gson = new Gson();
+    private final MinuteAverageDao dao = new MinuteAverageDao();
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws IOException {
-        // GET /api/minutes/latest?patientId=...&limit=...
-        resp.setCharacterEncoding("utf-8");
         resp.setContentType("application/json; charset=utf-8");
 
         String patientId = req.getParameter("patientId");
-        String limitStr = req.getParameter("limit");
+        String fromMsStr = req.getParameter("fromMs");
+        String toMsStr = req.getParameter("toMs");
 
-        int limit = 60;
-        if (limitStr != null) {
-            try { limit = Integer.parseInt(limitStr); } catch (Exception ignored) {}
-        }
-
-        if (patientId == null || patientId.isBlank()) {
+        if (patientId == null || fromMsStr == null || toMsStr == null) {
             resp.setStatus(400);
-            resp.getWriter().write(gson.toJson(new ErrorMsg("BAD_REQUEST", "patientId is required")));
+            resp.getWriter().write("{\"error\":\"missing params: patientId, fromMs, toMs\"}");
             return;
         }
 
+        long fromMs, toMs;
         try {
-            List<MinuteRecord> rows = minuteDao.latest(patientId.trim(), limit);
-            resp.getWriter().write(gson.toJson(rows));
+            fromMs = Long.parseLong(fromMsStr);
+            toMs = Long.parseLong(toMsStr);
         } catch (Exception e) {
-            resp.setStatus(500);
-            resp.getWriter().write(gson.toJson(new ErrorMsg("MINUTES_API_ERROR", e.getMessage())));
+            resp.setStatus(400);
+            resp.getWriter().write("{\"error\":\"fromMs/toMs must be long\"}");
+            return;
         }
-    }
 
-    @Override
-    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws IOException {
-        // POST /api/minutes  body: { patientId, minuteStartMs, avgTemp, avgHR, avgRR, avgSys, avgDia, sampleCount }
-        resp.setCharacterEncoding("utf-8");
-        resp.setContentType("application/json; charset=utf-8");
-
+        final List<MinuteRecord> list;
         try {
-            PostMsg msg = readJson(req, PostMsg.class);
-            if (msg == null || msg.patientId == null || msg.patientId.isBlank()) {
-                resp.setStatus(400);
-                resp.getWriter().write(gson.toJson(new ErrorMsg("BAD_REQUEST", "patientId is required")));
-                return;
-            }
-
-            MinuteRecord mr = new MinuteRecord(
-                    msg.minuteStartMs,
-                    msg.avgTemp,
-                    msg.avgHR,
-                    msg.avgRR,
-                    msg.avgSys,
-                    msg.avgDia,
-                    msg.sampleCount
-            );
-
-            minuteDao.upsert(msg.patientId.trim(), mr);
-
-            resp.getWriter().write(gson.toJson(new OkMsg(true)));
-        } catch (Exception e) {
+            list = dao.range(patientId, fromMs, toMs);
+        } catch (SQLException e) {
             resp.setStatus(500);
-            resp.getWriter().write(gson.toJson(new ErrorMsg("MINUTES_INGEST_ERROR", e.getMessage())));
+            resp.getWriter().write("{\"error\":\"db error: " + escape(e.getMessage()) + "\"}");
+            return;
         }
-    }
 
-    private <T> T readJson(HttpServletRequest req, Class<T> cls) throws IOException {
-        try (BufferedReader br = new BufferedReader(new InputStreamReader(req.getInputStream(), StandardCharsets.UTF_8))) {
-            StringBuilder sb = new StringBuilder();
-            String line;
-            while ((line = br.readLine()) != null) sb.append(line);
-            String body = sb.toString().trim();
-            if (body.isEmpty()) return null;
-            return gson.fromJson(body, cls);
+        StringBuilder sb = new StringBuilder();
+        sb.append("{\"patientId\":\"").append(escape(patientId)).append("\",");
+        sb.append("\"fromMs\":").append(fromMs).append(",");
+        sb.append("\"toMs\":").append(toMs).append(",");
+        sb.append("\"minutes\":[");
+
+        for (int i = 0; i < list.size(); i++) {
+            MinuteRecord r = list.get(i);
+            if (i > 0) sb.append(",");
+
+            sb.append("{");
+            sb.append("\"minuteStartMs\":").append(r.minuteStartMs()).append(",");
+            sb.append("\"avgTemp\":").append(r.avgTemp()).append(",");
+            sb.append("\"avgHr\":").append(r.avgHR()).append(",");
+            sb.append("\"avgRr\":").append(r.avgRR()).append(",");
+            sb.append("\"avgSys\":").append(r.avgSys()).append(",");
+            sb.append("\"avgDia\":").append(r.avgDia()).append(",");
+            sb.append("\"n\":").append(r.sampleCount());
+            sb.append("}");
         }
+
+        sb.append("]}");
+        resp.getWriter().write(sb.toString());
     }
 
-    static final class PostMsg {
-        String patientId;
-        long minuteStartMs;
-        double avgTemp;
-        double avgHR;
-        double avgRR;
-        double avgSys;
-        double avgDia;
-        int sampleCount;
-    }
-
-    static final class OkMsg {
-        boolean ok;
-        OkMsg(boolean ok) { this.ok = ok; }
-    }
-
-    static final class ErrorMsg {
-        String code;
-        String message;
-        ErrorMsg(String code, String message) { this.code = code; this.message = message; }
+    private static String escape(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 }

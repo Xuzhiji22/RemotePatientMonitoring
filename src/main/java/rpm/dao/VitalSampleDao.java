@@ -92,8 +92,10 @@ public final class VitalSampleDao {
 
         String sql =
                 "SELECT ts_ms, body_temp, heart_rate, respiratory_rate, systolic_bp, diastolic_bp, ecg_value " +
-                        "FROM vital_samples WHERE patient_id = ? AND ts_ms BETWEEN ? AND ? " +
-                        "ORDER BY ts_ms DESC LIMIT ?";
+                        "FROM vital_samples " +
+                        "WHERE patient_id = ? AND ts_ms >= ? AND ts_ms <= ? " +
+                        "ORDER BY ts_ms ASC " +
+                        "LIMIT ?";
 
         try (Connection c = Db.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
@@ -105,20 +107,20 @@ public final class VitalSampleDao {
 
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    long ts = rs.getLong("ts_ms");
-                    double temp = rs.getDouble("body_temp");
-                    double hr = rs.getDouble("heart_rate");
-                    double rr = rs.getDouble("respiratory_rate");
-                    double sys = rs.getDouble("systolic_bp");
-                    double dia = rs.getDouble("diastolic_bp");
-                    double ecg = rs.getDouble("ecg_value");
-
-                    out.add(new VitalSample(ts, temp, hr, rr, sys, dia, ecg));
+                    out.add(new VitalSample(
+                            rs.getLong("ts_ms"),
+                            rs.getDouble("body_temp"),
+                            rs.getDouble("heart_rate"),
+                            rs.getDouble("respiratory_rate"),
+                            rs.getDouble("systolic_bp"),
+                            rs.getDouble("diastolic_bp"),
+                            rs.getDouble("ecg_value")
+                    ));
                 }
             }
-        } catch (Exception ignored) {
-        }
+        } catch (Exception ignored) {}
 
         return out;
     }
+
 }
