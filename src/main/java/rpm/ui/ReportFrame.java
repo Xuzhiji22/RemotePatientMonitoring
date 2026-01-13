@@ -7,6 +7,9 @@ import rpm.data.AbnormalEvent;
 import rpm.data.MinuteRecord;
 import rpm.data.PatientHistoryStore;
 import rpm.model.Patient;
+import rpm.client.CloudReportClient;
+import rpm.config.ConfigStore;
+import java.nio.file.Paths;
 
 import javax.swing.*;
 import java.awt.*;
@@ -25,6 +28,9 @@ public class ReportFrame extends JFrame {
     private final JFrame back;
 
     private final JTextArea textArea = new JTextArea();
+    private JButton btnGen;
+    private boolean loading = false;
+
 
     public ReportFrame(Patient patient, PatientHistoryStore history, AlertEngine alertEngine, JFrame back) {
         this.patient = patient;
@@ -38,13 +44,13 @@ public class ReportFrame extends JFrame {
         setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
 
         buildUi();
-        generateLast24hReport(); // 打开就先生成一份
+        generateLast24hReport();
     }
 
     private void buildUi() {
         JPanel top = new JPanel(new FlowLayout(FlowLayout.LEFT));
 
-        JButton btnGen = new JButton("Generate (Last 24h)");
+        btnGen = new JButton("Generate (Last 24h)");
         JButton btnCopy = new JButton("Copy");
         JButton btnBack = new JButton("Back");
 
@@ -74,25 +80,77 @@ public class ReportFrame extends JFrame {
     }
 
     private void generateLast24hReport() {
+        if (loading) return;
+        loading = true;
+
         long now = System.currentTimeMillis();
         long from = now - 24L * 60L * 60L * 1000L;
 
-        try {
-            MinuteAverageDao minuteDao = new MinuteAverageDao();
-            AbnormalEventDao abnormalDao = new AbnormalEventDao();
+        // Read cloud baseUrl + timeout from system.properties
+        ConfigStore cfg = new ConfigStore(Paths.get("data", "system.properties"));
+        final String cloudBaseUrl = cfg.getString("cloud.baseUrl", "https://bioeng-rpm-app.impaas.uk");
+        final int cloudLimit = cfg.getInt("cloud.report.limit", 2000);
 
-            // 你们 minute_averages 是按 minute_start_ms 存的，这里取最多 24h * 60 = 1440
-            List<MinuteRecord> minutes = minuteDao.latest(patient.patientId(), 2000);
-            List<AbnormalEvent> abns = abnormalDao.latest(patient.patientId(), 2000);
+        // UI state
+        if (btnGen != null) btnGen.setEnabled(false);
+        textArea.setText("Generating report...\n");
+        textArea.setCaretPosition(0);
 
-            String report = buildTextReport(patient, from, now, minutes, abns);
-            textArea.setText(report);
-            textArea.setCaretPosition(0);
+        SwingWorker<String, Void> worker = new SwingWorker<>() {
 
-        } catch (Exception ex) {
-            textArea.setText("Failed to generate report: " + ex.getMessage());
-        }
+            @Override
+            protected String doInBackground() {
+                // ===== 1) Cloud-first =====
+                try {
+                    CloudReportClient client = new CloudReportClient(cloudBaseUrl);
+
+                    String minutesJson = client.getLatestMinutesJson(patient.patientId(), cloudLimit);
+                    String abnormalJson = client.getLatestAbnormalJson(patient.patientId(), cloudLimit);
+
+                    return buildCloudTextReport(patient, from, now, minutesJson, abnormalJson);
+
+                } catch (Exception cloudEx) {
+                    System.err.println("[ReportFrame] cloud report failed: " + cloudEx.getMessage());
+
+                    // ===== 2) Fallback: local DB =====
+                    try {
+                        MinuteAverageDao minuteDao = new MinuteAverageDao();
+                        AbnormalEventDao abnormalDao = new AbnormalEventDao();
+
+                        List<MinuteRecord> minutes = minuteDao.latest(patient.patientId(), 2000);
+                        List<AbnormalEvent> abns = abnormalDao.latest(patient.patientId(), 2000);
+
+                        return buildTextReport(patient, from, now, minutes, abns)
+                                + "\n\n[Note] Cloud report failed, showing local DB report fallback.\n"
+                                + "Cloud error: " + cloudEx.getMessage() + "\n";
+
+                    } catch (Exception dbEx) {
+                        return "Failed to generate report.\n"
+                                + "Cloud error: " + cloudEx.getMessage() + "\n"
+                                + "Local DB error: " + dbEx.getMessage() + "\n";
+                    }
+                }
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    String report = get();
+                    textArea.setText(report);
+                    textArea.setCaretPosition(0);
+                } catch (Exception e) {
+                    textArea.setText("Failed to generate report: " + e.getMessage());
+                } finally {
+                    loading = false;
+                    if (btnGen != null) btnGen.setEnabled(true);
+                }
+            }
+        };
+
+        worker.execute();
     }
+
+
 
     private String buildTextReport(
             Patient p,
@@ -158,6 +216,29 @@ public class ReportFrame extends JFrame {
         if (abCount == 0) {
             sb.append("No abnormal instances in this window.\n");
         }
+
+        sb.append("\n===== End =====\n");
+        return sb.toString();
+    }
+
+    private String buildCloudTextReport(Patient p, long fromMs, long toMs,
+                                        String minutesJson, String abnormalJson) {
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+                .withZone(ZoneId.systemDefault());
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("===== Daily Report (Last 24h) [CLOUD] =====\n");
+        sb.append("Patient: ").append(p.patientId()).append(" / ").append(p.name()).append("\n");
+        sb.append("Ward: ").append(p.ward()).append("\n");
+        sb.append("Window: ").append(fmt.format(Instant.ofEpochMilli(fromMs)))
+                .append("  ->  ")
+                .append(fmt.format(Instant.ofEpochMilli(toMs))).append("\n\n");
+
+        sb.append("---- Minute Averages (JSON from /api/minutes/latest) ----\n");
+        sb.append(minutesJson).append("\n\n");
+
+        sb.append("---- Abnormal Instances (JSON from /api/abnormal/latest) ----\n");
+        sb.append(abnormalJson).append("\n");
 
         sb.append("\n===== End =====\n");
         return sb.toString();

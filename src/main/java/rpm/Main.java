@@ -18,6 +18,9 @@ import rpm.notify.FileEmailService;
 import rpm.sim.Simulator;
 import rpm.ui.LoginFrame;
 import rpm.db.Db;
+import rpm.cloud.CloudSyncService;
+
+
 
 import javax.swing.*;
 import java.nio.file.Path;
@@ -61,6 +64,7 @@ public class Main {
         // user + config storage
         UserStore userStore = new UserStore(Paths.get("data", "users.properties"));
         ConfigStore configStore = new ConfigStore(Paths.get("data", "system.properties"));
+
         AuthService authService = new AuthService(userStore);
 
         // ===== Email digest (optional) =====
@@ -79,6 +83,18 @@ public class Main {
         // ===== DB enabled flag (optional) =====
         // IMPORTANT: compute ONCE so it's effectively final for inner classes
         final boolean dbEnabled = configStore.getBool("db.enabled", true) && probeDatabaseOnce();
+
+        // ===== Cloud sync (Level 3) =====
+        final boolean cloudSyncEnabled = configStore.getBool("cloud.sync.enabled", false);
+        final String cloudBaseUrl = configStore.getString("cloud.baseUrl", "https://bioeng-rpm-app.impaas.uk");
+        final int cloudTimeoutMs = configStore.getInt("cloud.timeout.ms", 15000);
+        final long cloudUploadPeriodMs = configStore.getInt("cloud.upload.period.ms", 1000);
+        final int cloudQueueMax = configStore.getInt("cloud.queue.max", 2000);
+
+        final CloudSyncService cloudSync =
+                new CloudSyncService(cloudSyncEnabled, cloudBaseUrl, cloudTimeoutMs, cloudUploadPeriodMs, cloudQueueMax);
+
+        System.out.println("[Main] cloud.sync.enabled=" + cloudSyncEnabled + " | cloud.baseUrl=" + cloudBaseUrl);
 
         // If DB is not available locally, also silence audio to avoid noisy runs
         final boolean audioEnabled = dbEnabled ? audioEnabledFromCfg : false;
@@ -99,6 +115,8 @@ public class Main {
 
         ScheduledExecutorService exec = Executors.newSingleThreadScheduledExecutor();
 
+
+
         // background sampling: every 200ms
         exec.scheduleAtFixedRate(new Runnable() {
             @Override
@@ -113,6 +131,7 @@ public class Main {
 
                     VitalSample sample = sim.nextSample(now);
                     store.addSample(sample);
+                    cloudSync.enqueueVital(id, sample);
 
                     MinuteAggregator agg = pm.aggregatorOf(id);
                     MinuteAggregator.AggregationResult result = agg.onSample(sample);
