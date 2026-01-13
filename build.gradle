@@ -46,6 +46,8 @@ dependencies {
     implementation 'com.google.code.gson:gson:2.11.0'
     implementation 'org.eclipse.jetty:jetty-jndi:9.4.24.v20191120'
 
+    implementation 'com.zaxxer:HikariCP:5.1.0'
+
 }
 
 gretty {
