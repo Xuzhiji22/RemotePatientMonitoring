@@ -9,6 +9,8 @@ import rpm.data.PatientHistoryStore;
 import rpm.model.Patient;
 import rpm.client.CloudReportClient;
 import rpm.config.ConfigStore;
+import rpm.model.AlertLevel;
+
 import java.nio.file.Paths;
 
 import javax.swing.*;
@@ -18,11 +20,17 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 
+import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+
+
 public class ReportFrame extends JFrame {
 
     private final Patient patient;
     @SuppressWarnings("unused")
-    private final PatientHistoryStore history; // 保留：你们本来就传进来，后续也可做“本地历史对照”
+    private final PatientHistoryStore history;
     @SuppressWarnings("unused")
     private final AlertEngine alertEngine;
     private final JFrame back;
@@ -30,6 +38,10 @@ public class ReportFrame extends JFrame {
     private final JTextArea textArea = new JTextArea();
     private JButton btnGen;
     private boolean loading = false;
+
+    private static final Gson GSON = new Gson();
+    private static final int MAX_ABNORMAL_LINES = 10;
+    private static final boolean REPORT_DEBUG_RAW_JSON = false;
 
 
     public ReportFrame(Patient patient, PatientHistoryStore history, AlertEngine alertEngine, JFrame back) {
@@ -223,6 +235,7 @@ public class ReportFrame extends JFrame {
 
     private String buildCloudTextReport(Patient p, long fromMs, long toMs,
                                         String minutesJson, String abnormalJson) {
+
         DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
                 .withZone(ZoneId.systemDefault());
 
@@ -234,13 +247,169 @@ public class ReportFrame extends JFrame {
                 .append("  ->  ")
                 .append(fmt.format(Instant.ofEpochMilli(toMs))).append("\n\n");
 
-        sb.append("---- Minute Averages (JSON from /api/minutes/latest) ----\n");
-        sb.append(minutesJson).append("\n\n");
+        // -------- Parse minutes JSON -> summary stats --------
+        SummaryStats stats = parseMinutesSummary(minutesJson, fromMs, toMs);
 
-        sb.append("---- Abnormal Instances (JSON from /api/abnormal/latest) ----\n");
-        sb.append(abnormalJson).append("\n");
+        sb.append("--- Summary ---\n");
+        if (stats.total == 0) {
+            sb.append("No minute averages in this window.\n\n");
+        } else {
+
+            int expected = (int) Math.max(1, (toMs - fromMs) / (60_000L));
+            double coverage = 100.0 * stats.total / expected;
+
+            sb.append(String.format("Data coverage: %d / %d minutes (%.1f%%)\n",
+                    stats.total, expected, coverage));
+
+            sb.append(String.format("Temp (°C): mean %.2f | min %.2f | max %.2f\n",
+                    stats.meanTemp(), stats.minTemp, stats.maxTemp));
+            sb.append(String.format("HR (bpm):  mean %.2f | min %.2f | max %.2f\n",
+                    stats.meanHr(), stats.minHr, stats.maxHr));
+            sb.append(String.format("RR (/min): mean %.2f | min %.2f | max %.2f\n",
+                    stats.meanRr(), stats.minRr, stats.maxRr));
+            sb.append(String.format("BP Sys:    mean %.2f | min %.2f | max %.2f\n",
+                    stats.meanSys(), stats.minSys, stats.maxSys));
+            sb.append(String.format("BP Dia:    mean %.2f | min %.2f | max %.2f\n\n",
+                    stats.meanDia(), stats.minDia, stats.maxDia));
+        }
+
+        // -------- Parse abnormal JSON -> highlights --------
+        List<AbnormalEvent> abns = parseAbnormalEvents(abnormalJson);
+        sb.append("--- Abnormal Highlights (latest first) ---\n");
+
+        int shown = 0;
+        int inWindow = 0;
+        int urgent = 0;
+        int warning = 0;
+
+
+        for (AbnormalEvent a : abns) {
+            long ts = a.timestampMs();
+            if (ts < fromMs || ts > toMs) continue;
+
+            inWindow++;
+            AlertLevel lvl = a.level();
+            if (lvl == AlertLevel.URGENT) urgent++;
+            if (lvl == AlertLevel.WARNING) warning++;
+
+
+            if (shown < MAX_ABNORMAL_LINES) {
+                sb.append(fmt.format(Instant.ofEpochMilli(ts)))
+                        .append(" | ").append(a.level())
+                        .append(" | ").append(a.vitalType())
+                        .append(" | ").append(String.format("%.2f", a.value()))
+                        .append(" | ").append(a.message())
+                        .append("\n");
+                shown++;
+            }
+        }
+
+        if (inWindow == 0) {
+            sb.append("No abnormal instances in this window.\n");
+        }
+
+        // Overall status
+        sb.append("\n");
+        sb.append(String.format("Overall: %s (Urgent: %d, Warning: %d, Total: %d)\n\n",
+                (urgent > 0 ? "URGENT" : (warning > 0 ? "WARNING" : "STABLE")),
+                urgent, warning, inWindow));
+
+        // -------- Optional debug raw JSON --------
+        if (REPORT_DEBUG_RAW_JSON) {
+            sb.append("---- Raw JSON (Debug) ----\n");
+            sb.append("[minutes]\n").append(minutesJson).append("\n\n");
+            sb.append("[abnormal]\n").append(abnormalJson).append("\n\n");
+        } else {
+            sb.append("[Note] Raw minute-by-minute JSON hidden (enable REPORT_DEBUG_RAW_JSON for debugging).\n");
+        }
 
         sb.append("\n===== End =====\n");
         return sb.toString();
     }
+
+    private SummaryStats parseMinutesSummary(String minutesJson, long fromMs, long toMs) {
+        SummaryStats s = new SummaryStats();
+
+        try {
+            JsonObject root = JsonParser.parseString(minutesJson).getAsJsonObject();
+            JsonArray arr = root.getAsJsonArray("minutes");
+            if (arr == null) return s;
+
+            for (int i = 0; i < arr.size(); i++) {
+                JsonObject m = arr.get(i).getAsJsonObject();
+
+                long t = m.has("minuteStartMs") ? m.get("minuteStartMs").getAsLong() : 0L;
+                if (t < fromMs || t > toMs) continue;
+
+
+                double temp = getAsDouble(m, "avgTemp");
+                double hr = getAsDouble(m, "avgHr");
+                double rr = getAsDouble(m, "avgRr");
+                double sys = getAsDouble(m, "avgSys");
+                double dia = getAsDouble(m, "avgDia");
+
+                s.add(temp, hr, rr, sys, dia);
+            }
+        } catch (Exception e) {
+
+            System.err.println("[ReportFrame] parseMinutesSummary failed: " + e.getMessage());
+        }
+
+        return s;
+    }
+
+    private List<AbnormalEvent> parseAbnormalEvents(String abnormalJson) {
+        try {
+
+            AbnormalEvent[] arr = GSON.fromJson(abnormalJson, AbnormalEvent[].class);
+            return arr == null ? List.of() : List.of(arr);
+        } catch (Exception e) {
+            System.err.println("[ReportFrame] parseAbnormalEvents failed: " + e.getMessage());
+            return List.of();
+        }
+    }
+
+    private double getAsDouble(JsonObject obj, String key) {
+        try {
+            if (obj == null || !obj.has(key) || obj.get(key).isJsonNull()) return Double.NaN;
+            return obj.get(key).getAsDouble();
+        } catch (Exception e) {
+            return Double.NaN;
+        }
+    }
+
+    /** mean/min/max */
+    private static class SummaryStats {
+        int total = 0;
+
+        double sumTemp = 0, sumHr = 0, sumRr = 0, sumSys = 0, sumDia = 0;
+
+        double minTemp = Double.POSITIVE_INFINITY, maxTemp = Double.NEGATIVE_INFINITY;
+        double minHr = Double.POSITIVE_INFINITY,   maxHr = Double.NEGATIVE_INFINITY;
+        double minRr = Double.POSITIVE_INFINITY,   maxRr = Double.NEGATIVE_INFINITY;
+        double minSys = Double.POSITIVE_INFINITY,  maxSys = Double.NEGATIVE_INFINITY;
+        double minDia = Double.POSITIVE_INFINITY,  maxDia = Double.NEGATIVE_INFINITY;
+
+        void add(double temp, double hr, double rr, double sys, double dia) {
+
+            if (Double.isNaN(temp) || Double.isNaN(hr) || Double.isNaN(rr) || Double.isNaN(sys) || Double.isNaN(dia)) return;
+
+            total++;
+            sumTemp += temp; sumHr += hr; sumRr += rr; sumSys += sys; sumDia += dia;
+
+            minTemp = Math.min(minTemp, temp); maxTemp = Math.max(maxTemp, temp);
+            minHr = Math.min(minHr, hr);       maxHr = Math.max(maxHr, hr);
+            minRr = Math.min(minRr, rr);       maxRr = Math.max(maxRr, rr);
+            minSys = Math.min(minSys, sys);    maxSys = Math.max(maxSys, sys);
+            minDia = Math.min(minDia, dia);    maxDia = Math.max(maxDia, dia);
+        }
+
+        double meanTemp() { return total == 0 ? 0 : sumTemp / total; }
+        double meanHr()   { return total == 0 ? 0 : sumHr / total; }
+        double meanRr()   { return total == 0 ? 0 : sumRr / total; }
+        double meanSys()  { return total == 0 ? 0 : sumSys / total; }
+        double meanDia()  { return total == 0 ? 0 : sumDia / total; }
+    }
+
+
 }
