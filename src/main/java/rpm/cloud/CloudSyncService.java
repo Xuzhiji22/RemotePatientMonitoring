@@ -137,4 +137,18 @@ public class CloudSyncService {
             this.sample = sample;
         }
     }
+
+    /** Convert "P1" -> "P001". Keep already-normalised IDs as-is. */
+    private static String normalisePatientId(String id) {
+        if (id == null) return null;
+        String t = id.trim();
+        if (t.matches("P\\d{3}")) return t;
+        if (t.matches("P\\d{1,2}")) {
+            try {
+                int n = Integer.parseInt(t.substring(1));
+                return String.format("P%03d", n);
+            } catch (Exception ignored) {}
+        }
+        return t;
+    }
 }

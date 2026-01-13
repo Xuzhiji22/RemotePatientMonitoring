@@ -49,14 +49,14 @@ public class Main {
         AlertEngine alertEngine = new AlertEngine();
 
         List<Patient> patients = List.of(
-                new Patient("P1", "Patient 1", 34, "Ward A", "p1@hospital.com", "EC1"),
-                new Patient("P2", "Patient 2", 56, "Ward A", "p2@hospital.com", "EC2"),
-                new Patient("P3", "Patient 3", 41, "Ward B", "p3@hospital.com", "EC3"),
-                new Patient("P4", "Patient 4", 28, "Ward B", "p4@hospital.com", "EC4"),
-                new Patient("P5", "Patient 5", 73, "Ward C", "p5@hospital.com", "EC5"),
-                new Patient("P6", "Patient 6", 62, "Ward C", "p6@hospital.com", "EC6"),
-                new Patient("P7", "Patient 7", 39, "Ward D", "p7@hospital.com", "EC7"),
-                new Patient("P8", "Patient 8", 45, "Ward D", "p8@hospital.com", "EC8")
+                new Patient("P001", "Patient 1", 21, "Ward A", "patient1@example.com", "999-000-0001"),
+                new Patient("P002", "Patient 2", 22, "Ward A", "patient2@example.com", "999-000-0002"),
+                new Patient("P003", "Patient 3", 23, "Ward A", "patient3@example.com", "999-000-0003"),
+                new Patient("P004", "Patient 4", 24, "Ward A", "patient4@example.com", "999-000-0004"),
+                new Patient("P005", "Patient 5", 25, "Ward A", "patient5@example.com", "999-000-0005"),
+                new Patient("P006", "Patient 6", 26, "Ward A", "patient6@example.com", "999-000-0006"),
+                new Patient("P007", "Patient 7", 27, "Ward A", "patient7@example.com", "999-000-0007"),
+                new Patient("P008", "Patient 8", 28, "Ward A", "patient8@example.com", "999-000-0008")
         );
 
         PatientManager pm = new PatientManager(patients, maxSeconds, sampleHz, alertEngine);

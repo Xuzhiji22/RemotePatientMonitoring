@@ -28,12 +28,13 @@ public final class DbInit {
                     "CREATE TABLE IF NOT EXISTS vital_samples (" +
                             "patient_id TEXT NOT NULL," +
                             "ts_ms BIGINT NOT NULL," +
-                            "temp DOUBLE PRECISION," +
-                            "hr DOUBLE PRECISION," +
-                            "rr DOUBLE PRECISION," +
-                            "sys DOUBLE PRECISION," +
-                            "dia DOUBLE PRECISION," +
-                            "ecg DOUBLE PRECISION," +
+                            // keep names consistent with VitalSampleDao / API payload
+                            "body_temp DOUBLE PRECISION," +
+                            "heart_rate DOUBLE PRECISION," +
+                            "respiratory_rate DOUBLE PRECISION," +
+                            "systolic_bp DOUBLE PRECISION," +
+                            "diastolic_bp DOUBLE PRECISION," +
+                            "ecg_value DOUBLE PRECISION," +
                             "PRIMARY KEY (patient_id, ts_ms)" +
                             ")"
             );
@@ -53,15 +54,17 @@ public final class DbInit {
                             ")"
             );
 
-            // abnormal_events（如果你有用到就保留；没有也不影响）
+            // abnormal_events: keep names consistent with AbnormalEventDao / API
+            // Use a composite PK so we can safely 'insert if not exists' without duplicates.
             st.executeUpdate(
                     "CREATE TABLE IF NOT EXISTS abnormal_events (" +
                             "patient_id TEXT NOT NULL," +
-                            "ts_ms BIGINT NOT NULL," +
-                            "level TEXT," +
-                            "vital TEXT," +
+                            "timestamp_ms BIGINT NOT NULL," +
+                            "vital_type TEXT NOT NULL," +
+                            "level TEXT NOT NULL," +
                             "value DOUBLE PRECISION," +
-                            "message TEXT" +
+                            "message TEXT," +
+                            "PRIMARY KEY (patient_id, timestamp_ms, vital_type)" +
                             ")"
             );
         }

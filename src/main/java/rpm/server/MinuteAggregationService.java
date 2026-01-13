@@ -1,8 +1,13 @@
 package rpm.server;
 
+import rpm.alert.AlertEngine;
+import rpm.dao.AbnormalEventDao;
 import rpm.dao.MinuteAverageDao;
 import rpm.dao.VitalSampleDao;
+import rpm.data.AbnormalEvent;
 import rpm.data.MinuteRecord;
+import rpm.model.AlertLevel;
+import rpm.model.VitalType;
 import rpm.model.VitalSample;
 
 import java.util.List;
@@ -12,13 +17,18 @@ public final class MinuteAggregationService {
 
     private final VitalSampleDao vitalDao;
     private final MinuteAverageDao minuteDao;
+    private final AbnormalEventDao abnormalDao;
     private final List<String> patientIds;
+
+    // Reuse the same thresholds on server-side to produce abnormal instance records.
+    private final AlertEngine alertEngine = new AlertEngine();
 
     private ScheduledExecutorService exec;
 
     public MinuteAggregationService(VitalSampleDao vitalDao, MinuteAverageDao minuteDao, List<String> patientIds) {
         this.vitalDao = vitalDao;
         this.minuteDao = minuteDao;
+        this.abnormalDao = new AbnormalEventDao();
         this.patientIds = patientIds;
     }
 
@@ -45,11 +55,10 @@ public final class MinuteAggregationService {
     private void aggregateLastFullMinute() {
         long now = System.currentTimeMillis();
         long currentMinuteStart = (now / 60000L) * 60000L;
-        long minuteStart = currentMinuteStart - 60000L;       // 上一分钟
-        long minuteEnd = currentMinuteStart - 1;              // 上一分钟最后 1ms
+        long minuteStart = currentMinuteStart - 60000L;
+        long minuteEnd = currentMinuteStart - 1;
 
         for (String pid : patientIds) {
-            // 这里保持你现有 VitalSampleDao.range 的 4 参数签名： (pid, fromMs, toMs, limit)
             List<VitalSample> samples = vitalDao.range(pid, minuteStart, minuteEnd, 5000);
             if (samples == null || samples.isEmpty()) continue;
 
@@ -63,7 +72,6 @@ public final class MinuteAggregationService {
             }
             int n = samples.size();
 
-            // ✅ DB minute_averages 使用 MinuteRecord（data 层）
             MinuteRecord r = new MinuteRecord(
                     minuteStart,
                     sumT / n,
@@ -74,10 +82,33 @@ public final class MinuteAggregationService {
                     n
             );
 
-            // ✅ MinuteAverageDao: upsert(String patientId, MinuteRecord r)
             try {
                 minuteDao.upsert(pid, r);
             } catch (Exception ignored) {}
+
+            persistAbnormalForMinute(pid, r);
+        }
+    }
+
+    private void persistAbnormalForMinute(String patientId, MinuteRecord r) {
+        long ts = r.minuteStartMs();
+
+        recordIfAbnormal(patientId, ts, VitalType.BODY_TEMPERATURE, r.avgTemp(), "avgTemp");
+        recordIfAbnormal(patientId, ts, VitalType.HEART_RATE,       r.avgHR(),   "avgHR");
+        recordIfAbnormal(patientId, ts, VitalType.RESPIRATORY_RATE, r.avgRR(),   "avgRR");
+        recordIfAbnormal(patientId, ts, VitalType.SYSTOLIC_BP,      r.avgSys(),  "avgSys");
+        recordIfAbnormal(patientId, ts, VitalType.DIASTOLIC_BP,     r.avgDia(),  "avgDia");
+    }
+
+    private void recordIfAbnormal(String patientId, long ts, VitalType type, double value, String label) {
+        AlertLevel level = alertEngine.eval(type, value);
+        if (level == null || level == AlertLevel.NORMAL) return;
+
+        String msg = label + " out of range (" + String.format("%.2f", value) + ")";
+
+        try {
+            abnormalDao.insert(patientId, new AbnormalEvent(ts, type, level, value, msg));
+        } catch (Exception ignored) {
         }
     }
 }

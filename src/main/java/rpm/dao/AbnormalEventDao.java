@@ -15,7 +15,8 @@ public final class AbnormalEventDao {
         String sql =
                 "INSERT INTO abnormal_events " +
                         "(patient_id, timestamp_ms, vital_type, level, value, message) " +
-                        "VALUES (?, ?, ?, ?, ?, ?)";
+                        "VALUES (?, ?, ?, ?, ?, ?) " +
+                        "ON CONFLICT (patient_id, timestamp_ms, vital_type) DO NOTHING";
 
         try (Connection c = Db.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
