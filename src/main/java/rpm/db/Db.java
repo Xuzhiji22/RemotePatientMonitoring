@@ -43,6 +43,8 @@ public final class Db {
                     + "&tcpKeepAlive=true";
 
             HikariConfig cfg = new HikariConfig();
+            cfg.setDriverClassName("org.postgresql.Driver");
+
             cfg.setJdbcUrl(jdbcUrl);
             cfg.setUsername(user);
             cfg.setPassword(pass);
