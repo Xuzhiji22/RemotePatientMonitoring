@@ -55,6 +55,8 @@ public class CloudSyncService {
     public void enqueueVital(String patientId, VitalSample s) {
         if (!enabled || patientId == null || s == null) return;
 
+        patientId = normalisePatientId(patientId);
+
         long now = System.currentTimeMillis();
         long last = lastUploadMs.getOrDefault(patientId, 0L);
         if (now - last < uploadPeriodMs) return; // rate limit per patient
