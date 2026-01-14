@@ -38,6 +38,8 @@ tasks.register('stage') {
 
 dependencies {
 
+    implementation 'com.sun.mail:javax.mail:1.6.2'
+
     compileOnly 'javax.servlet:javax.servlet-api:4.0.1'
 
     testImplementation platform('org.junit:junit-bom:5.10.0')

@@ -19,6 +19,8 @@ import rpm.sim.Simulator;
 import rpm.ui.LoginFrame;
 import rpm.db.Db;
 import rpm.cloud.CloudSyncService;
+import rpm.notify.SmtpEmailService;
+
 
 
 
@@ -73,8 +75,28 @@ public class Main {
         final int digestHour = configStore.getInt("digest.hour", 8);
         final int digestMinute = configStore.getInt("digest.minute", 0);
 
-        EmailService emailService = new FileEmailService(Path.of("outbox"));
+        // choose an email service: smtp or file
+        final String emailMode = configStore.getString("email.mode", "file"); // "smtp" or "file"
+
+        final EmailService emailService;
+        if ("smtp".equalsIgnoreCase(emailMode)) {
+            final String host = configStore.getString("smtp.host", "smtp.gmail.com");
+            final int port = configStore.getInt("smtp.port", 587);
+            final String user = configStore.getString("smtp.user", "");
+            final String pass = configStore.getString("smtp.pass", "");
+            final String from = configStore.getString("smtp.from", user);
+            final boolean startTls = configStore.getBool("smtp.starttls", true);
+
+            emailService = new SmtpEmailService(host, port, user, pass, startTls, from);
+            System.out.println("[Main] email.mode=smtp host=" + host + ":" + port + " from=" + from);
+        } else {
+            final String outboxDir = configStore.getString("email.outboxDir", "outbox");
+            emailService = new FileEmailService(Path.of(outboxDir));
+            System.out.println("[Main] email.mode=file outboxDir=" + outboxDir);
+        }
+
         DailyDigestNotifier digest = new DailyDigestNotifier(emailService, alertEngine, doctorEmail);
+
 
         // ===== Audio (optional) =====
         final boolean audioEnabledFromCfg = configStore.getBool("audio.enabled", false);
