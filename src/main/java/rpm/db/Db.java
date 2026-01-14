@@ -12,7 +12,11 @@ public final class Db {
 
     private Db() {}
 
-    private static boolean hasPgEnv() {
+    /**
+     * True when PG* environment variables exist (i.e. Postgres service is bound).
+     * Useful to detect "cloud" runtime vs local UI-only run.
+     */
+    public static boolean hasPgEnv() {
         return System.getenv("PGHOST") != null
                 && System.getenv("PGPORT") != null
                 && System.getenv("PGDATABASE") != null
@@ -58,7 +62,6 @@ public final class Db {
             cfg.setMaxLifetime(5 * 60_000);
             cfg.setKeepaliveTime(30_000);
 
-
             cfg.addDataSourceProperty("ApplicationName", "bioeng-rpm-app");
 
             ds = new HikariDataSource(cfg);
@@ -69,7 +72,6 @@ public final class Db {
     public static Connection getConnection() throws SQLException {
         return dataSource().getConnection();
     }
-
 
     public static void close() {
         HikariDataSource tmp = ds;

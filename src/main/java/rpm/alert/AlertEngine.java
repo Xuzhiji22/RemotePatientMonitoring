@@ -16,6 +16,7 @@ public class AlertEngine {
         thresholds.put(VitalType.RESPIRATORY_RATE, new Threshold(10, 20, 6, 30));
         thresholds.put(VitalType.SYSTOLIC_BP,      new Threshold(90, 140, 70, 180));
         thresholds.put(VitalType.DIASTOLIC_BP,     new Threshold(60, 90, 40, 120));
+        // ECG 通常不按这个阈值报警，UI里可以忽略或自定义
         thresholds.put(VitalType.ECG,              new Threshold(-999, 999, -999, 999));
 
     }

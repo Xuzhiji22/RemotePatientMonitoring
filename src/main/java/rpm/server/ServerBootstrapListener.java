@@ -1,6 +1,7 @@
 package rpm.server;
 
 import rpm.dao.PatientDao;
+import rpm.db.Db;
 import rpm.db.DbInit;
 import rpm.model.Patient;
 
@@ -11,16 +12,6 @@ import javax.servlet.annotation.WebListener;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Bootstraps server-side components on webapp startup:
- * - DB schema init (DbInit)
- * - Seed 8 patients into DB
- * - Start server-side simulation service (writes to DB periodically)
- * - Start minute aggregation service (writes minute averages)
- *
- * This is required for a real Level 3 architecture:
- * Client reads from server API; server owns persistence & simulation.
- */
 @WebListener
 public class ServerBootstrapListener implements ServletContextListener {
 
@@ -28,12 +19,13 @@ public class ServerBootstrapListener implements ServletContextListener {
     public static final String CTX_SIM_REGISTRY = "rpm.sim.registry";
     public static final String CTX_SIM_SERVICE  = "rpm.sim.service";
 
-    private static boolean hasPgEnv() {
-        return System.getenv("PGHOST") != null
-                && System.getenv("PGPORT") != null
-                && System.getenv("PGDATABASE") != null
-                && System.getenv("PGUSER") != null
-                && System.getenv("PGPASSWORD") != null;
+    /**
+     * Server-side simulator should be OFF by default on cloud.
+     * If you want server-only simulation demo, set RPM_SERVER_SIM=1.
+     */
+    private static boolean serverSimEnabled() {
+        String v = System.getenv("RPM_SERVER_SIM");
+        return v != null && (v.equalsIgnoreCase("1") || v.equalsIgnoreCase("true") || v.equalsIgnoreCase("yes"));
     }
 
     @Override
@@ -41,32 +33,31 @@ public class ServerBootstrapListener implements ServletContextListener {
         ServletContext ctx = sce.getServletContext();
 
         try {
-            // Always create registry so local UI / future code can rely on ctx attributes.
             SimulationRegistry registry = new SimulationRegistry();
             ctx.setAttribute(CTX_SIM_REGISTRY, registry);
 
-            // Local run without Postgres bound: keep app runnable but do not init DB / start DB writers.
-            if (!hasPgEnv()) {
+            // Local run without Postgres bound: don't init DB or start DB writers.
+            if (!Db.hasPgEnv()) {
                 return;
             }
 
-            // 1) init schema
             DbInit.init();
 
-            // 2) seed patients
             List<Patient> patients = seedPatients();
 
-            // 3) start server-side simulator
             registry.ensurePatients(patients);
 
             List<String> patientIds = new ArrayList<>();
             for (Patient p : patients) patientIds.add(p.patientId());
 
-            ServerSimulationService sim = new ServerSimulationService(registry, patientIds);
-            sim.start(5);
-            ctx.setAttribute(CTX_SIM_SERVICE, sim);
+            // Server-side simulator OFF by default
+            if (serverSimEnabled()) {
+                ServerSimulationService sim = new ServerSimulationService(registry, patientIds);
+                sim.start(5);
+                ctx.setAttribute(CTX_SIM_SERVICE, sim);
+            }
 
-            // 4) start minute aggregation
+            // Minute aggregation ON (needed to compute minute_averages + abnormal_events)
             MinuteAggregationService agg = new MinuteAggregationService(
                     new rpm.dao.VitalSampleDao(),
                     new rpm.dao.MinuteAverageDao(),
@@ -85,7 +76,6 @@ public class ServerBootstrapListener implements ServletContextListener {
         ServletContext ctx = sce.getServletContext();
         if (ctx == null) return;
 
-        // Stop aggregation first, then stop simulator (cleaner shutdown).
         Object a = ctx.getAttribute(CTX_MINUTE_AGG);
         if (a instanceof MinuteAggregationService) {
             try { ((MinuteAggregationService) a).stop(); } catch (Exception ignored) {}
