@@ -1,5 +1,12 @@
 package rpm.cloud;
 
+/**
+ * Background service that pushes local data to the cloud API when available.
+ *
+ * <p>Important: the desktop UI remains usable even if the cloud is down. This service
+ * is best-effort and should never crash the UI thread.
+ */
+
 import rpm.data.AbnormalEvent;
 import rpm.data.MinuteRecord;
 import rpm.model.VitalSample;
@@ -168,9 +175,8 @@ public class CloudSyncService {
         }
 
         int code = conn.getResponseCode();
-        System.out.println("[cloud-sync] " + tag + " http=" + code);
         if (code < 200 || code >= 300) {
-            System.err.println("[cloud-sync] " + tag + " failed http=" + code);
+            System.err.println("[cloud-sync] " + tag + " http=" + code);
         }
 
         conn.disconnect();

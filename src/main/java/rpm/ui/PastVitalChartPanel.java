@@ -18,7 +18,10 @@ public class PastVitalChartPanel extends JPanel {
     private VitalType vitalType = VitalType.HEART_RATE;
     private ToDoubleFunction<MinuteRecord> extractor = MinuteRecord::avgHR;
 
-    private AlertEngine alertEngine;
+    private final AlertEngine alertEngine;
+
+    // NEW: dynamic range label shown above the chart
+    private String rangeLabel = "Last 24 hours (minute averages)";
 
     public PastVitalChartPanel(AlertEngine alertEngine) {
         this.alertEngine = alertEngine;
@@ -39,6 +42,13 @@ public class PastVitalChartPanel extends JPanel {
 
     public void setSelectedIndex(int idx) {
         this.selectedIndex = idx;
+        repaint();
+    }
+
+    // NEW
+    public void setRangeLabel(String label) {
+        if (label == null || label.isBlank()) return;
+        this.rangeLabel = label;
         repaint();
     }
 
@@ -111,6 +121,8 @@ public class PastVitalChartPanel extends JPanel {
         g2.setColor(Color.DARK_GRAY);
         g2.drawString(String.format("max: %.2f", max), 8, padT + 10);
         g2.drawString(String.format("min: %.2f", min), 8, padT + plotH);
-        g2.drawString("Last 24 hours (minute averages)", padL, 18);
+
+        // UPDATED: use dynamic label
+        g2.drawString(rangeLabel, padL, 18);
     }
 }

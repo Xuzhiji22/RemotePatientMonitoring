@@ -21,6 +21,7 @@ import java.time.format.DateTimeFormatter;
 
 public class AdminFrame extends JFrame {
 
+    private static final long serialVersionUID = 1L;
     private final PatientManager pm;
     private final AlertEngine alertEngine;
     private final JFrame loginFrame;

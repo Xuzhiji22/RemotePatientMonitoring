@@ -171,9 +171,9 @@ public abstract class BaseDetailFrame extends JFrame {
         loginFrame.setVisible(true);
     }
 
-    // 子类：底部按钮区怎么长
+
     protected abstract JPanel buildBottomPanel();
 
-    // 子类：用于显示在左侧 patient details
+    // Show patient details
     protected abstract String viewName();
 }

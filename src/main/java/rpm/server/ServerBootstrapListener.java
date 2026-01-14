@@ -1,5 +1,14 @@
 package rpm.server;
 
+/**
+ * Servlet container bootstrap.
+ *
+ * <p>On cloud deployment, this listener initialises the database schema and starts
+ * server-side background jobs such as simulation and minute aggregation.
+ *
+ * <p>Entry point is configured in {@code WEB-INF/web.xml}.
+ */
+
 import rpm.dao.PatientDao;
 import rpm.db.Db;
 import rpm.db.DbInit;

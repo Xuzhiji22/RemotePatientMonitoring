@@ -8,7 +8,10 @@ import rpm.model.VitalType;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Objects;
+
+/**
+ * Aggregates incoming samples into minute-level records and detects abnormal events.
+ */
 
 public class MinuteAggregator {
     private final AlertEngine alertEngine;
@@ -16,7 +19,7 @@ public class MinuteAggregator {
     private long currentMinuteStart = -1;
     private final List<VitalSample> bucket = new ArrayList<>();
 
-
+    // Track the last alert level for each vital type to detect state changes.
     private AlertLevel lastTemp = AlertLevel.NORMAL;
     private AlertLevel lastHR   = AlertLevel.NORMAL;
     private AlertLevel lastRR   = AlertLevel.NORMAL;
@@ -28,13 +31,20 @@ public class MinuteAggregator {
         this.alertEngine = alertEngine;
     }
 
-
+    /**
+     * Processes a single vital sample.
+     * 1. Checks for immediate abnormal events (threshold violations).
+     * 2. Aggregates data into 1-minute buckets.
+     */
     public synchronized AggregationResult onSample(VitalSample s) {
+        // 1. Detect abnormal events immediately
         List<AbnormalEvent> abnormalEvents = detectAbnormalEvents(s);
 
+        // 2. Minute-level aggregation logic
         long minuteStart = (s.timestampMs() / 60000L) * 60000L;
         if (currentMinuteStart < 0) currentMinuteStart = minuteStart;
 
+        // If we crossed a minute boundary, compute the average for the previous minute
         if (minuteStart != currentMinuteStart && !bucket.isEmpty()) {
             MinuteRecord rec = computeMinuteRecord(currentMinuteStart, bucket);
 
@@ -46,61 +56,57 @@ public class MinuteAggregator {
         }
 
         bucket.add(s);
+        // If still in the same minute, return events only (record is null)
         return new AggregationResult(null, abnormalEvents);
     }
 
+    /**
+     * Checks all vital types against the AlertEngine.
+     */
     private List<AbnormalEvent> detectAbnormalEvents(VitalSample s) {
         if (alertEngine == null) return Collections.emptyList();
 
-        List<AbnormalEvent> out = new ArrayList<>();
+        List<AbnormalEvent> events = new ArrayList<>();
+        long now = s.timestampMs();
 
-        // Body Temp
-        AlertLevel lt = alertEngine.eval(VitalType.BODY_TEMPERATURE, s.bodyTemp());
-        if (lt != lastTemp) {
-            if (lt != AlertLevel.NORMAL) out.add(new AbnormalEvent(s.timestampMs(), VitalType.BODY_TEMPERATURE, lt, s.bodyTemp(), "Body temperature out of range"));
-            lastTemp = lt;
-        }
+        // Use helper method 'check' to handle logic for each vital type
+        lastTemp = check(events, now, VitalType.BODY_TEMPERATURE, s.bodyTemp(),        lastTemp);
+        lastHR   = check(events, now, VitalType.HEART_RATE,       s.heartRate(),       lastHR);
+        lastRR   = check(events, now, VitalType.RESPIRATORY_RATE, s.respiratoryRate(), lastRR);
+        lastSys  = check(events, now, VitalType.SYSTOLIC_BP,      s.systolicBP(),      lastSys);
+        lastDia  = check(events, now, VitalType.DIASTOLIC_BP,     s.diastolicBP(),     lastDia);
 
-        // Heart Rate
-        AlertLevel lhr = alertEngine.eval(VitalType.HEART_RATE, s.heartRate());
-        if (lhr != lastHR) {
-            if (lhr != AlertLevel.NORMAL) out.add(new AbnormalEvent(s.timestampMs(), VitalType.HEART_RATE, lhr, s.heartRate(), "Heart rate out of range"));
-            lastHR = lhr;
-        }
+        // Optional: Check ECG if thresholds are defined
+        lastECG  = check(events, now, VitalType.ECG,              s.ecgValue(),        lastECG);
 
-        // Respiratory Rate
-        AlertLevel lrr = alertEngine.eval(VitalType.RESPIRATORY_RATE, s.respiratoryRate());
-        if (lrr != lastRR) {
-            if (lrr != AlertLevel.NORMAL) out.add(new AbnormalEvent(s.timestampMs(), VitalType.RESPIRATORY_RATE, lrr, s.respiratoryRate(), "Respiratory rate out of range"));
-            lastRR = lrr;
-        }
-
-        // Systolic BP
-        AlertLevel lsys = alertEngine.eval(VitalType.SYSTOLIC_BP, s.systolicBP());
-        if (lsys != lastSys) {
-            if (lsys != AlertLevel.NORMAL) out.add(new AbnormalEvent(s.timestampMs(), VitalType.SYSTOLIC_BP, lsys, s.systolicBP(), "Systolic BP out of range"));
-            lastSys = lsys;
-        }
-
-        // Diastolic BP
-        AlertLevel ldia = alertEngine.eval(VitalType.DIASTOLIC_BP, s.diastolicBP());
-        if (ldia != lastDia) {
-            if (ldia != AlertLevel.NORMAL) out.add(new AbnormalEvent(s.timestampMs(), VitalType.DIASTOLIC_BP, ldia, s.diastolicBP(), "Diastolic BP out of range"));
-            lastDia = ldia;
-        }
-
-        // ECG
-        AlertLevel lecg = alertEngine.eval(VitalType.ECG, s.ecgValue());
-        if (lecg != lastECG) {
-            if (lecg != AlertLevel.NORMAL) out.add(new AbnormalEvent(s.timestampMs(), VitalType.ECG, lecg, s.ecgValue(), "ECG value out of range"));
-            lastECG = lecg;
-        }
-
-        return out;
+        return events;
     }
 
+    /**
+     * Helper: Evaluates a value and detects state transitions.
+     * This fixes the issue where upgrading from WARNING to URGENT was ignored.
+     */
+    private AlertLevel check(List<AbnormalEvent> events, long now, VitalType type, double val, AlertLevel lastLevel) {
+        AlertLevel currentLevel = alertEngine.eval(type, val);
+
+        // Logic: Record an event whenever the alert level CHANGES.
+        // This ensures we capture transitions like WARNING -> URGENT, not just NORMAL -> ABNORMAL.
+        if (currentLevel != lastLevel) {
+            // Only record if the new state is not NORMAL (i.e., it's an anomaly)
+            if (currentLevel != AlertLevel.NORMAL) {
+                String msg = type + " value " + String.format("%.2f", val) + " is " + currentLevel;
+                events.add(new AbnormalEvent(now, type, currentLevel, val, msg));
+            }
+        }
+        return currentLevel; // Update the tracked level
+    }
+
+    /**
+     * Computes the average of all samples in the bucket.
+     */
     private MinuteRecord computeMinuteRecord(long minuteStart, List<VitalSample> samples) {
         int n = samples.size();
+
         double temp = samples.stream().mapToDouble(VitalSample::bodyTemp).average().orElse(Double.NaN);
         double hr   = samples.stream().mapToDouble(VitalSample::heartRate).average().orElse(Double.NaN);
         double rr   = samples.stream().mapToDouble(VitalSample::respiratoryRate).average().orElse(Double.NaN);
@@ -110,7 +116,9 @@ public class MinuteAggregator {
         return new MinuteRecord(minuteStart, temp, hr, rr, sys, dia, n);
     }
 
-    // Java 11 replacement for record AggregationResult(...)
+    /**
+     * Simple POJO to hold the result of the aggregation step.
+     */
     public static final class AggregationResult {
         private final MinuteRecord minuteRecord;
         private final List<AbnormalEvent> abnormalEvents;
@@ -126,29 +134,6 @@ public class MinuteAggregator {
 
         public List<AbnormalEvent> abnormalEvents() {
             return abnormalEvents;
-        }
-
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) return true;
-            if (!(o instanceof AggregationResult)) return false;
-
-            AggregationResult other = (AggregationResult) o;
-            return Objects.equals(minuteRecord, other.minuteRecord())
-                    && Objects.equals(abnormalEvents, other.abnormalEvents());
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(minuteRecord, abnormalEvents);
-        }
-
-        @Override
-        public String toString() {
-            return "AggregationResult[" +
-                    "minuteRecord=" + minuteRecord +
-                    ", abnormalEvents=" + abnormalEvents +
-                    "]";
         }
     }
 }

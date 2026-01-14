@@ -50,7 +50,7 @@ public class VitalsApiServlet extends HttpServlet {
             return;
         }
 
-        // 用 range(过去10秒) 来近似 latest：取最后一个点（避免你现有 DAO 没有 getLatest）
+
         long now = System.currentTimeMillis();
         List<VitalSample> samples = dao.range(patientId, now - 10_000, now, 1);
         if (samples.isEmpty()) {

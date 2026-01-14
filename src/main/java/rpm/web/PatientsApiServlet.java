@@ -25,7 +25,7 @@ public class PatientsApiServlet extends HttpServlet {
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws IOException {
         resp.setContentType("application/json; charset=utf-8");
 
-        // LOCAL 模式：DB disabled -> 返回空数组（这是预期行为）
+        // LOCAL：DB disabled -> []
         if (!hasPgEnv()) {
             resp.getWriter().write("[]");
             return;

@@ -9,7 +9,7 @@ import java.util.List;
 public class EcgChartPanel extends JPanel {
 
     private List<VitalSample> data = List.of();
-    private int windowSeconds = 10; // ECG 默认窗口更短更好看
+    private int windowSeconds = 10;
 
     public EcgChartPanel() {
         setPreferredSize(new Dimension(350, 250));
@@ -17,7 +17,7 @@ public class EcgChartPanel extends JPanel {
     }
 
     public void setWindowSeconds(int s) {
-        // ECG 建议不要太长，否则密麻麻；但给你自由
+        // ECG not too long
         this.windowSeconds = s;
         repaint();
     }
