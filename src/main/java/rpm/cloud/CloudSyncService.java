@@ -168,9 +168,11 @@ public class CloudSyncService {
         }
 
         int code = conn.getResponseCode();
+        System.out.println("[cloud-sync] " + tag + " http=" + code);
         if (code < 200 || code >= 300) {
-            System.err.println("[cloud-sync] " + tag + " http=" + code);
+            System.err.println("[cloud-sync] " + tag + " failed http=" + code);
         }
+
         conn.disconnect();
     }
 

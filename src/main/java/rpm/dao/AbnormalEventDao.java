@@ -12,11 +12,17 @@ import java.util.List;
 public final class AbnormalEventDao {
 
     public void insert(String patientId, AbnormalEvent e) throws SQLException {
+
+        // Works even if the table has NO unique/primary key constraint.
+        // Avoids Postgres error: "no unique or exclusion constraint matching the ON CONFLICT specification"
         String sql =
                 "INSERT INTO abnormal_events " +
                         "(patient_id, timestamp_ms, vital_type, level, value, message) " +
-                        "VALUES (?, ?, ?, ?, ?, ?) " +
-                        "ON CONFLICT (patient_id, timestamp_ms, vital_type) DO NOTHING";
+                        "SELECT ?, ?, ?, ?, ?, ? " +
+                        "WHERE NOT EXISTS (" +
+                        "  SELECT 1 FROM abnormal_events " +
+                        "  WHERE patient_id = ? AND timestamp_ms = ? AND vital_type = ?" +
+                        ")";
 
         try (Connection c = Db.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
@@ -27,6 +33,12 @@ public final class AbnormalEventDao {
             ps.setString(4, e.level().name());
             ps.setDouble(5, e.value());
             ps.setString(6, e.message());
+
+            // NOT EXISTS params
+            ps.setString(7, patientId);
+            ps.setLong(8, e.timestampMs());
+            ps.setString(9, e.vitalType().name());
+
             ps.executeUpdate();
         }
     }
