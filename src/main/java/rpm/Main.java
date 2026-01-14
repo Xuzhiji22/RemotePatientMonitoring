@@ -140,22 +140,34 @@ public class Main {
                     audioAlert.onAbnormalEvents(result.abnormalEvents(), now);
                     audioAlert.onHeartRate(sample.heartRate(), now);
 
-                    // 1) abnormal events: write DB only if enabled
-                    if (dbEnabled && result.abnormalEvents() != null && !result.abnormalEvents().isEmpty()) {
+                    // 1) abnormal events: always try cloud upload; DB write only if enabled
+                    if (result.abnormalEvents() != null && !result.abnormalEvents().isEmpty()) {
                         for (var e : result.abnormalEvents()) {
-                            try {
-                                abnormalDao.insert(id, e);
-                            } catch (Exception ex) {
-                                // do not spam stack traces
-                                System.err.println("[Main] abnormalDao.insert failed: " + ex.getMessage());
+
+                            // cloud (non-blocking)
+                            cloudSync.enqueueAbnormal(id, e);
+
+                            // DB (optional)
+                            if (dbEnabled) {
+                                try {
+                                    abnormalDao.insert(id, e);
+                                } catch (Exception ex) {
+                                    // do not spam stack traces
+                                    System.err.println("[Main] abnormalDao.insert failed: " + ex.getMessage());
+                                }
                             }
                         }
                     }
+
+
 
                     // 2) minute average: write DB only if enabled
                     if (result.minuteRecord() != null) {
                         var mr = result.minuteRecord();
                         pm.historyOf(id).addMinuteRecord(mr);
+
+                        // cloud (non-blocking)
+                        cloudSync.enqueueMinuteRecord(id, mr);
 
                         if (dbEnabled) {
                             try {

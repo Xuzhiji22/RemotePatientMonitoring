@@ -1,21 +1,16 @@
 package rpm.cloud;
 
+import rpm.data.AbnormalEvent;
+import rpm.data.MinuteRecord;
 import rpm.model.VitalSample;
 
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.util.Map;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/**
- * Non-blocking cloud uploader:
- * - Sampling thread: enqueue only (never blocked)
- * - Worker thread: POST to /api/vitals
- * - Per-patient rate limit (uploadPeriodMs)
- */
 public class CloudSyncService {
 
     private final boolean enabled;
@@ -27,8 +22,8 @@ public class CloudSyncService {
     private final ExecutorService worker;
     private final AtomicBoolean running = new AtomicBoolean(true);
 
-    // per patient last upload time
-    private final ConcurrentHashMap<String, Long> lastUploadMs = new ConcurrentHashMap<>();
+    // per patient last upload time (vitals only)
+    private final ConcurrentHashMap<String, Long> lastVitalUploadMs = new ConcurrentHashMap<>();
 
     public CloudSyncService(boolean enabled,
                             String baseUrl,
@@ -40,6 +35,7 @@ public class CloudSyncService {
         this.timeoutMs = timeoutMs;
         this.uploadPeriodMs = uploadPeriodMs;
         this.q = new ArrayBlockingQueue<>(Math.max(100, queueMax));
+
         this.worker = Executors.newSingleThreadExecutor(r -> {
             Thread t = new Thread(r, "cloud-sync-worker");
             t.setDaemon(true);
@@ -58,15 +54,32 @@ public class CloudSyncService {
         patientId = normalisePatientId(patientId);
 
         long now = System.currentTimeMillis();
-        long last = lastUploadMs.getOrDefault(patientId, 0L);
+        long last = lastVitalUploadMs.getOrDefault(patientId, 0L);
         if (now - last < uploadPeriodMs) return; // rate limit per patient
-        lastUploadMs.put(patientId, now);
+        lastVitalUploadMs.put(patientId, now);
 
-        // offer: if queue full -> drop (avoid blocking sampling)
-        boolean ok = q.offer(new Item(patientId, s));
-        if (!ok) {
-            // drop silently or print once; here keep minimal noise
-        }
+        // if full -> drop silently
+        q.offer(Item.vital(patientId, s));
+    }
+
+    /** called by sampling thread: never block */
+    public void enqueueAbnormal(String patientId, AbnormalEvent e) {
+        if (!enabled || patientId == null || e == null) return;
+
+        patientId = normalisePatientId(patientId);
+
+        // if full -> drop silently
+        q.offer(Item.abnormal(patientId, e));
+    }
+
+    /** called by sampling thread: never block */
+    public void enqueueMinuteRecord(String patientId, MinuteRecord r) {
+        if (!enabled || patientId == null || r == null) return;
+
+        patientId = normalisePatientId(patientId);
+
+        // if full -> drop silently
+        q.offer(Item.minute(patientId, r));
     }
 
     public void shutdown() {
@@ -79,7 +92,15 @@ public class CloudSyncService {
             try {
                 Item it = q.poll(500, TimeUnit.MILLISECONDS);
                 if (it == null) continue;
-                postVital(it.patientId, it.sample);
+
+                if (it.kind == ItemKind.VITAL) {
+                    postVital(it.patientId, it.vital);
+                } else if (it.kind == ItemKind.ABNORMAL) {
+                    postAbnormal(it.patientId, it.abnormal);
+                } else if (it.kind == ItemKind.MINUTE) {
+                    postMinute(it.patientId, it.minute);
+                }
+
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
                 break;
@@ -90,19 +111,50 @@ public class CloudSyncService {
     }
 
     private void postVital(String patientId, VitalSample s) throws Exception {
-        // build minimal JSON (no gson needed)
-        String json = "{" +
-                "\"patientId\":\"" + escape(patientId) + "\"," +
-                "\"timestampMs\":" + s.timestampMs() + "," +
-                "\"bodyTemp\":" + s.bodyTemp() + "," +
-                "\"heartRate\":" + s.heartRate() + "," +
-                "\"respiratoryRate\":" + s.respiratoryRate() + "," +
-                "\"systolicBP\":" + s.systolicBP() + "," +
-                "\"diastolicBP\":" + s.diastolicBP() + "," +
-                "\"ecgValue\":" + s.ecgValue() +
-                "}";
+        String json = "{"
+                + "\"patientId\":\"" + escape(patientId) + "\","
+                + "\"timestampMs\":" + s.timestampMs() + ","
+                + "\"bodyTemp\":" + s.bodyTemp() + ","
+                + "\"heartRate\":" + s.heartRate() + ","
+                + "\"respiratoryRate\":" + s.respiratoryRate() + ","
+                + "\"systolicBP\":" + s.systolicBP() + ","
+                + "\"diastolicBP\":" + s.diastolicBP() + ","
+                + "\"ecgValue\":" + s.ecgValue()
+                + "}";
 
-        URL url = new URL(baseUrl + "/api/vitals");
+        httpPostJson(baseUrl + "/api/vitals", json, "POST /api/vitals");
+    }
+
+    private void postAbnormal(String patientId, AbnormalEvent e) throws Exception {
+        String json = "{"
+                + "\"patientId\":\"" + escape(patientId) + "\","
+                + "\"timestampMs\":" + e.timestampMs() + ","
+                + "\"vitalType\":\"" + escape(e.vitalType().name()) + "\","
+                + "\"level\":\"" + escape(e.level().name()) + "\","
+                + "\"value\":" + e.value() + ","
+                + "\"message\":\"" + escape(e.message() == null ? "" : e.message()) + "\""
+                + "}";
+
+        httpPostJson(baseUrl + "/api/abnormal", json, "POST /api/abnormal");
+    }
+
+    private void postMinute(String patientId, MinuteRecord r) throws Exception {
+        String json = "{"
+                + "\"patientId\":\"" + escape(patientId) + "\","
+                + "\"minuteStartMs\":" + r.minuteStartMs() + ","
+                + "\"avgTemp\":" + r.avgTemp() + ","
+                + "\"avgHR\":" + r.avgHR() + ","
+                + "\"avgRR\":" + r.avgRR() + ","
+                + "\"avgSys\":" + r.avgSys() + ","
+                + "\"avgDia\":" + r.avgDia() + ","
+                + "\"sampleCount\":" + r.sampleCount()
+                + "}";
+
+        httpPostJson(baseUrl + "/api/minutes", json, "POST /api/minutes");
+    }
+
+    private void httpPostJson(String urlStr, String json, String tag) throws Exception {
+        URL url = new URL(urlStr);
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         conn.setConnectTimeout(timeoutMs);
         conn.setReadTimeout(timeoutMs);
@@ -117,7 +169,7 @@ public class CloudSyncService {
 
         int code = conn.getResponseCode();
         if (code < 200 || code >= 300) {
-            System.err.println("[cloud-sync] POST /api/vitals http=" + code);
+            System.err.println("[cloud-sync] " + tag + " http=" + code);
         }
         conn.disconnect();
     }
@@ -128,15 +180,46 @@ public class CloudSyncService {
     }
 
     private static String escape(String s) {
+        if (s == null) return "";
         return s.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
+    private enum ItemKind {
+        VITAL,
+        ABNORMAL,
+        MINUTE
+    }
+
     private static class Item {
+        final ItemKind kind;
         final String patientId;
-        final VitalSample sample;
-        Item(String patientId, VitalSample sample) {
+        final VitalSample vital;
+        final AbnormalEvent abnormal;
+        final MinuteRecord minute;
+
+        // ✅ 统一 5 参数构造器：所有 final 字段都能初始化
+        private Item(ItemKind kind,
+                     String patientId,
+                     VitalSample vital,
+                     AbnormalEvent abnormal,
+                     MinuteRecord minute) {
+            this.kind = kind;
             this.patientId = patientId;
-            this.sample = sample;
+            this.vital = vital;
+            this.abnormal = abnormal;
+            this.minute = minute;
+        }
+
+        static Item vital(String patientId, VitalSample s) {
+            return new Item(ItemKind.VITAL, patientId, s, null, null);
+        }
+
+        static Item abnormal(String patientId, AbnormalEvent e) {
+            return new Item(ItemKind.ABNORMAL, patientId, null, e, null);
+        }
+
+        static Item minute(String patientId, MinuteRecord r) {
+            return new Item(ItemKind.MINUTE, patientId, null, null, r);
         }
     }
 
@@ -149,7 +232,8 @@ public class CloudSyncService {
             try {
                 int n = Integer.parseInt(t.substring(1));
                 return String.format("P%03d", n);
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
         }
         return t;
     }
