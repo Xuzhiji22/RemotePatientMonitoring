@@ -118,13 +118,15 @@ public class Main {
 
         System.out.println("[Main] cloud.sync.enabled=" + cloudSyncEnabled + " | cloud.baseUrl=" + cloudBaseUrl);
 
-        // If DB is not available locally, also silence audio to avoid noisy runs
-        final boolean audioEnabled = dbEnabled ? audioEnabledFromCfg : false;
-        if (!dbEnabled && audioEnabledFromCfg) {
-            System.out.println("[Main] DB not available -> auto-disabling audio to avoid repeated beeps.");
+        // Audio should NOT depend on DB connectivity (requirement: audio alarms + heartbeat sound)
+        final boolean audioEnabled = audioEnabledFromCfg;
+
+        if (!dbEnabled) {
+            System.out.println("[Main] DB not available -> running without DB. (Audio remains " + audioEnabled + ")");
         }
 
         final AudioAlertService audioAlert = new AudioAlertService(audioEnabled, heartbeatEnabled);
+
 
         // DAO: create only if DB enabled
         final MinuteAverageDao minuteDao = dbEnabled ? new MinuteAverageDao() : null;

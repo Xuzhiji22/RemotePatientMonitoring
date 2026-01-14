@@ -1,18 +1,25 @@
 package rpm.notify;
-import javax.sound.sampled.*;
-import java.io.InputStream;
+
 import rpm.data.AbnormalEvent;
 import rpm.model.AlertLevel;
+import rpm.model.VitalType;
 
-import java.awt.Toolkit;
+import javax.sound.sampled.*;
+import java.awt.*;
+import java.io.BufferedInputStream;
+import java.io.InputStream;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
- * Very simple audio feedback:
- * - on abnormal events: beep once (WARNING) or three times (URGENT)
- * - optional heartbeat "tick": single beep on beat interval (based on HR)
+ * Audio feedback:
+ * - Abnormal events: WARNING -> 1 beep, URGENT -> 3 beeps (throttled)
+ * - Heartbeat: periodic beep based on HR (optional)
  *
- * This uses Toolkit.beep() so it works on most OS without extra audio libs.
+ * Notes:
+ * - Runs audio playback asynchronously so sampling loop is not blocked.
+ * - Uses alert.wav if available; falls back to Toolkit.beep() if audio fails.
  */
 public class AudioAlertService {
 
@@ -22,9 +29,16 @@ public class AudioAlertService {
     // heartbeat scheduling
     private long nextBeatMs = 0;
 
-    // throttle abnormal beeps to avoid spamming every sample
+    // throttle abnormal beeps
     private long lastAbnormalBeepMs = 0;
-    private final long abnormalBeepCooldownMs = 1200; // 1.2s
+    private final long abnormalBeepCooldownMs = 1200;
+
+    // async audio executor (single thread keeps beep order)
+    private final ExecutorService audioExec = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "audio-alert");
+        t.setDaemon(true);
+        return t;
+    });
 
     public AudioAlertService(boolean enabled, boolean heartbeatEnabled) {
         this.enabled = enabled;
@@ -35,7 +49,6 @@ public class AudioAlertService {
         if (!enabled) return;
         if (events == null || events.isEmpty()) return;
 
-        // cooldown
         if (nowMs - lastAbnormalBeepMs < abnormalBeepCooldownMs) return;
         lastAbnormalBeepMs = nowMs;
 
@@ -49,16 +62,15 @@ public class AudioAlertService {
         }
 
         if (hasUrgent) {
-            beep(3);
+            beepAsync(3);
         } else if (hasWarning) {
-            beep(1);
+            beepAsync(1);
         }
     }
 
     public void onHeartRate(double hrBpm, long nowMs) {
         if (!enabled || !heartbeatEnabled) return;
 
-        // ignore unreasonable HR
         if (Double.isNaN(hrBpm) || hrBpm < 30 || hrBpm > 220) return;
 
         long intervalMs = (long) (60000.0 / hrBpm);
@@ -69,39 +81,54 @@ public class AudioAlertService {
         }
 
         if (nowMs >= nextBeatMs) {
-            beep(1);
-            // schedule next beat (avoid drift a bit)
+            beepAsync(1);
             nextBeatMs = nowMs + intervalMs;
         }
     }
 
-    private void beep(int times) {
-        for (int i = 0; i < times; i++) {
-            playWav("/alert.wav");
-            try {
-                Thread.sleep(300);   // 间隔比 120ms 长一点，声音更清晰
-            } catch (InterruptedException ignored) {
+    private void beepAsync(int times) {
+        audioExec.submit(() -> {
+            for (int i = 0; i < times; i++) {
+                boolean ok = playWavOnce("/alert.wav");
+                if (!ok) {
+                    Toolkit.getDefaultToolkit().beep();
+                }
+                try {
+                    Thread.sleep(250);
+                } catch (InterruptedException ignored) {
+                }
             }
-        }
+        });
     }
 
-    private void playWav(String resourcePath) {
+    private boolean playWavOnce(String resourcePath) {
         try {
-            InputStream is = getClass().getResourceAsStream(resourcePath);
-            if (is == null) {
-                System.err.println("Sound not found: " + resourcePath);
-                return;
+            InputStream is0 = getClass().getResourceAsStream(resourcePath);
+            if (is0 == null) {
+                System.err.println("[Audio] Sound not found: " + resourcePath);
+                return false;
             }
 
-            AudioInputStream audio = AudioSystem.getAudioInputStream(is);
-            Clip clip = AudioSystem.getClip();
-            clip.open(audio);
-            clip.start();
+            // BufferedInputStream improves compatibility on some JVM/OS
+            try (InputStream is = new BufferedInputStream(is0);
+                 AudioInputStream audio = AudioSystem.getAudioInputStream(is)) {
+
+                Clip clip = AudioSystem.getClip();
+                clip.open(audio);
+
+                // auto-close when done
+                clip.addLineListener(ev -> {
+                    if (ev.getType() == LineEvent.Type.STOP) {
+                        clip.close();
+                    }
+                });
+
+                clip.start();
+                return true;
+            }
         } catch (Exception e) {
-            e.printStackTrace();
+            System.err.println("[Audio] play failed: " + e.getMessage());
+            return false;
         }
     }
 }
-
-
-
