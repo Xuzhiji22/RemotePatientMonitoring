@@ -18,7 +18,7 @@ class ReportGeneratorTest {
     @Test
     void testReportContentGeneration() {
         // 1. Setup
-        Patient patient = new Patient("P1", "Test User", 30, "Ward A", "email", "123");
+        Patient patient = new Patient("P1", "Test User", 30, "Ward A", "patient1@example.com", "999-000-0001");
         AlertEngine engine = new AlertEngine();
         long now = System.currentTimeMillis();
 
@@ -43,7 +43,7 @@ class ReportGeneratorTest {
 
     @Test
     void testEmptyData() {
-        Patient patient = new Patient("P2", "Empty User", 30, "Ward B", "e", "1");
+        Patient patient = new Patient("P2", "Empty User", 30, "Ward B", "patient2@example.com", "999-000-0002");
         AlertEngine engine = new AlertEngine();
 
         ReportGenerator generator = new ReportGenerator();
