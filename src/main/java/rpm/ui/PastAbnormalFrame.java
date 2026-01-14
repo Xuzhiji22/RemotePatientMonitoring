@@ -1,7 +1,7 @@
 package rpm.ui;
 
 import rpm.alert.AlertEngine;
-import rpm.data.MinuteRecord;
+import rpm.data.AbnormalEvent;
 import rpm.data.PatientHistoryStore;
 import rpm.model.AlertLevel;
 import rpm.model.Patient;
@@ -51,7 +51,7 @@ public class PastAbnormalFrame extends JFrame {
 
         JPanel filters = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 6));
         filters.add(new JLabel("Range:"));
-        rangeCombo = new JComboBox<>(new String[]{"Last 24 Hours"}); // 你的 ring buffer 本来就是 24h
+        rangeCombo = new JComboBox<>(new String[]{"Last 24 Hours", "Last 72 Hours", "Last 7 Days"});
         filters.add(rangeCombo);
 
         filters.add(new JLabel("Vital:"));
@@ -75,7 +75,7 @@ public class PastAbnormalFrame extends JFrame {
 
         // Table
         model = new DefaultTableModel(new Object[]{
-                "Time", "Vital", "Value", "Level", "Warning Range", "Urgent Range"
+                "Time", "Vital", "Value", "Level", "Warning Range", "Urgent Range", "Message"
         }, 0) {
             @Override public boolean isCellEditable(int r, int c) { return false; }
         };
@@ -102,9 +102,11 @@ public class PastAbnormalFrame extends JFrame {
 
         setContentPane(root);
 
+        rangeCombo.addActionListener(e -> reload());
         typeCombo.addActionListener(e -> reload());
         urgentOnly.addActionListener(e -> reload());
 
+        rangeCombo.setSelectedIndex(0); // default 24h
         reload();
     }
 
@@ -116,72 +118,65 @@ public class PastAbnormalFrame extends JFrame {
     private void reload() {
         model.setRowCount(0);
 
-        List<MinuteRecord> recs = history.getLast24Hours();
-        if (recs.isEmpty()) {
-            summaryLabel.setText("No history records yet. (wait a bit / check MinuteAggregator -> addMinuteRecord)");
+        // 1) choose range
+        List<AbnormalEvent> events;
+        int ridx = rangeCombo.getSelectedIndex();
+        if (ridx == 0) {
+            events = history.getAbnormalLastHours(24);
+        } else if (ridx == 1) {
+            events = history.getAbnormalLastHours(72);
+        } else {
+            events = history.getAbnormalLastDays(7);
+        }
+
+        if (events == null || events.isEmpty()) {
+            summaryLabel.setText("No abnormal events in this range yet. (Run simulation until warnings/urgents appear.)");
             return;
         }
 
         VitalType filterType = (VitalType) typeCombo.getSelectedItem();
         boolean onlyUrgent = urgentOnly.isSelected();
 
-        int rowsAdded = 0;
         int urgentCount = 0;
+        int warningCount = 0;
 
-        // newest first
-        for (int i = recs.size() - 1; i >= 0; i--) {
-            MinuteRecord r = recs.get(i);
+        // events already newest-first if your history reversed them; even if not, it's ok.
+        for (AbnormalEvent e : events) {
+            if (e == null) continue;
 
-            rowsAdded += addIfAbnormal(r, VitalType.BODY_TEMPERATURE, r.avgTemp(), filterType, onlyUrgent);
-            rowsAdded += addIfAbnormal(r, VitalType.HEART_RATE,       r.avgHR(),   filterType, onlyUrgent);
-            rowsAdded += addIfAbnormal(r, VitalType.RESPIRATORY_RATE, r.avgRR(),   filterType, onlyUrgent);
-            rowsAdded += addIfAbnormal(r, VitalType.SYSTOLIC_BP,      r.avgSys(),  filterType, onlyUrgent);
-            rowsAdded += addIfAbnormal(r, VitalType.DIASTOLIC_BP,     r.avgDia(),  filterType, onlyUrgent);
-        }
+            VitalType vt = e.vitalType();
+            if (filterType != null && vt != filterType) continue;
 
+            AlertLevel level = e.level();
+            if (level == null) continue;
+            if (onlyUrgent && level != AlertLevel.URGENT) continue;
 
-        // 统计 urgent
-        for (int r = 0; r < model.getRowCount(); r++) {
-            if ("URGENT".equals(String.valueOf(model.getValueAt(r, 3)))) urgentCount++;
+            if (level == AlertLevel.URGENT) urgentCount++;
+            else if (level == AlertLevel.WARNING) warningCount++;
+
+            var th = alertEngine.getThreshold(vt);
+            String warnRange   = th == null ? "-" : (th.warnLow() + " ~ " + th.warnHigh());
+            String urgentRange = th == null ? "-" : ("<" + th.urgentLow() + " or >" + th.urgentHigh());
+
+            model.addRow(new Object[]{
+                    fmt.format(new Date(e.timestampMs())),
+                    pretty(vt),
+                    formatValue(vt, e.value()),
+                    level.toString(),
+                    warnRange,
+                    urgentRange,
+                    e.message() == null ? "" : e.message()
+            });
         }
 
         summaryLabel.setText(String.format(
-                "Patient %s | Abnormal rows: %d (URGENT: %d) | Source: %d historical minute-averages",
-                patient.patientId(), model.getRowCount(), urgentCount, recs.size()
+                "Patient %s | Rows: %d (URGENT: %d, WARNING: %d) | Source: %d real abnormal-events",
+                patient.patientId(), model.getRowCount(), urgentCount, warningCount, events.size()
         ));
     }
 
-    private int addIfAbnormal(MinuteRecord rec,
-                              VitalType type,
-                              double value,
-                              VitalType filterType,
-                              boolean onlyUrgent) {
-
-        if (filterType != null && filterType != type) return 0;
-
-        AlertLevel level = alertEngine.eval(type, value);
-        if (level == AlertLevel.NORMAL) return 0;
-        if (onlyUrgent && level != AlertLevel.URGENT) return 0;
-
-        var th = alertEngine.getThreshold(type);
-
-        //  Threshold: warnLow/warnHigh/urgentLow/urgentHigh
-        String warnRange   = th == null ? "-" : (th.warnLow() + " ~ " + th.warnHigh());
-        String urgentRange = th == null ? "-" : ("<" + th.urgentLow() + " or >" + th.urgentHigh());
-
-        model.addRow(new Object[]{
-                fmt.format(new Date(rec.minuteStartMs())),
-                pretty(type),
-                formatValue(type, value),
-                level.toString(),
-                warnRange,
-                urgentRange
-        });
-
-        return 1;
-    }
-
     private String pretty(VitalType t) {
+        if (t == null) return "-";
         switch (t) {
             case BODY_TEMPERATURE:
                 return "Body Temp";
@@ -199,6 +194,7 @@ public class PastAbnormalFrame extends JFrame {
     }
 
     private String formatValue(VitalType t, double v) {
+        if (t == null) return String.format("%.2f", v);
         switch (t) {
             case BODY_TEMPERATURE:
                 return String.format("%.2f °C", v);
@@ -213,7 +209,6 @@ public class PastAbnormalFrame extends JFrame {
                 return String.format("%.2f", v);
         }
     }
-
 
     private static class LevelRenderer extends DefaultTableCellRenderer {
         @Override

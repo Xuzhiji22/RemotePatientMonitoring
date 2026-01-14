@@ -175,6 +175,8 @@ public class Main {
                     if (result.abnormalEvents() != null && !result.abnormalEvents().isEmpty()) {
                         for (var e : result.abnormalEvents()) {
 
+                            pm.historyOf(id).addAbnormalEvent(e);
+
                             // cloud (non-blocking)
                             cloudSync.enqueueAbnormal(id, e);
 

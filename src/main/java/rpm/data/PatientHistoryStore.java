@@ -1,68 +1,83 @@
 package rpm.data;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
-/**
- * Stores recent minute-average records for UI browsing.
- *
- * Capacity is intentionally set to 7 days (7 * 24 * 60 minutes)
- * to support "view past week data" requirement.
- *
- * This is a local cache only. Long-term persistence is handled
- * by the cloud database.
- */
 public class PatientHistoryStore {
 
-    // 7 days * 24 hours * 60 minutes = 10080
-    private static final int MAX_MINUTES = 7 * 24 * 60;
+    // 7d * 24h * 60min = 10080 minutes
+    private final MinuteRingBuffer<MinuteRecord> minuteRecords = new MinuteRingBuffer<>(10080);
 
-    private final MinuteRingBuffer<MinuteRecord> minuteRecords =
-            new MinuteRingBuffer<>(MAX_MINUTES);
+    // Abnormal events can be more frequent than minute records, give a larger buffer.
+    // 20000 is usually enough for demos; increase if needed.
+    private final MinuteRingBuffer<AbnormalEvent> abnormalEvents = new MinuteRingBuffer<>(20000);
 
-    /** Called by Main once per minute */
+    // -------- minute records --------
     public void addMinuteRecord(MinuteRecord rec) {
         minuteRecords.add(rec);
     }
 
-    /** Last 24 hours (backward compatible) */
     public List<MinuteRecord> getLast24Hours() {
         return getLastHours(24);
     }
 
-    /** Last N hours */
     public List<MinuteRecord> getLastHours(int hours) {
-        return getLastMinutes(hours * 60);
-    }
-
-    /** Last N days */
-    public List<MinuteRecord> getLastDays(int days) {
-        return getLastMinutes(days * 24 * 60);
-    }
-
-    /** Core time-based filtering */
-    private List<MinuteRecord> getLastMinutes(int minutes) {
         long now = System.currentTimeMillis();
-        long fromMs = now - minutes * 60_000L;
+        long from = now - hours * 3600_000L;
+        return filterMinuteRecords(from, now);
+    }
+
+    public List<MinuteRecord> getLastDays(int days) {
+        long now = System.currentTimeMillis();
+        long from = now - days * 24L * 3600_000L;
+        return filterMinuteRecords(from, now);
+    }
+
+    private List<MinuteRecord> filterMinuteRecords(long fromMs, long toMs) {
+        List<MinuteRecord> all = minuteRecords.snapshot();
+        if (all.isEmpty()) return List.of();
 
         List<MinuteRecord> out = new ArrayList<>();
-        for (MinuteRecord r : minuteRecords.snapshot()) {
-            if (r.minuteStartMs() >= fromMs) {
-                out.add(r);
-            }
+        for (MinuteRecord r : all) {
+            long t = r.minuteStartMs();
+            if (t >= fromMs && t <= toMs) out.add(r);
         }
         return out;
     }
 
-    // ---- legacy accessors (keep to avoid breaking old UI code) ----
-
-    /** for UI legacy use */
-    public List<MinuteRecord> minuteRecords() {
-        return getLast24Hours();
+    // -------- abnormal events (真实事件) --------
+    public void addAbnormalEvent(AbnormalEvent e) {
+        abnormalEvents.add(e);
     }
 
-    /** for previous use */
-    public List<MinuteRecord> getMinuteRecords() {
-        return getLast24Hours();
+    public List<AbnormalEvent> getAbnormalLastHours(int hours) {
+        long now = System.currentTimeMillis();
+        long from = now - hours * 3600_000L;
+        return filterAbnormal(from, now);
     }
+
+    public List<AbnormalEvent> getAbnormalLastDays(int days) {
+        long now = System.currentTimeMillis();
+        long from = now - days * 24L * 3600_000L;
+        return filterAbnormal(from, now);
+    }
+
+    private List<AbnormalEvent> filterAbnormal(long fromMs, long toMs) {
+        List<AbnormalEvent> all = abnormalEvents.snapshot();
+        if (all.isEmpty()) return List.of();
+
+        List<AbnormalEvent> out = new ArrayList<>();
+        for (AbnormalEvent e : all) {
+            long t = e.timestampMs();
+            if (t >= fromMs && t <= toMs) out.add(e);
+        }
+        // UI一般希望最新在上：倒序
+        Collections.reverse(out);
+        return out;
+    }
+
+    // for ui legacy compatibility
+    public List<MinuteRecord> minuteRecords() { return getLast24Hours(); }
+    public List<MinuteRecord> getMinuteRecords() { return getLast24Hours(); }
 }
