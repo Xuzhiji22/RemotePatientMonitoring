@@ -12,7 +12,7 @@ public class SimpleVitalSimulator implements Simulator {
 
     private final Patient patient;
 
-    // Normal Base
+    // 基础数值
     private double hrBase = 75.0;
     private double tempBase = 36.7;
     private double rrBase = 14.0;
@@ -21,8 +21,19 @@ public class SimpleVitalSimulator implements Simulator {
 
     private double phase = 0;
 
+    // --- 新增：自动恶化逻辑 ---
+    private final long createdAt; // 模拟器创建时间
+    private boolean isDestinedToGetSick = false; // 是否注定要生病
+
     public SimpleVitalSimulator(Patient patient) {
         this.patient = patient;
+        this.createdAt = System.currentTimeMillis();
+
+        // 设定：只有 ID 结尾是 '1' 或 '6' 的病人会变异 (例如 P001, P006)
+        // 或者你可以根据名字判断: patient.name().endsWith("1")
+        if (patient.patientId().endsWith("1") || patient.patientId().endsWith("6")) {
+            this.isDestinedToGetSick = true;
+        }
     }
 
     @Override
@@ -47,32 +58,42 @@ public class SimpleVitalSimulator implements Simulator {
 
     @Override
     public VitalSample nextSample(long nowMs) {
-        // 1. Calculate Drift Factor
-        // Range: Oscillates between -1.0 and +1.0 roughly every few seconds.
+        // --- 1. 自动恶化检查 ---
+        // 如果这个病人注定要生病，且当前是 NORMAL，且时间已经过了 20 秒
+        if (isDestinedToGetSick && mode == SimulationMode.NORMAL) {
+            long elapsedSeconds = (nowMs - createdAt) / 1000;
+            if (elapsedSeconds > 20) { // 20秒后自动发病
+                mode = SimulationMode.ABNORMAL;
+                System.out.println("⚠️ Patient " + patient.patientId() + " condition deteriorating!");
+            }
+        }
+
+        // --- 2. 下面是之前写的正弦波漂移逻辑 (保持不变) ---
+
         double wave = Math.sin(phase * 0.1);
-        // If mode is NORMAL, abnormal factor is 0.0. If ABNORMAL, it is 1.0.
         double abnormal = (mode == SimulationMode.ABNORMAL) ? 1.0 : 0.0;
 
-        // 2. Generate Vitals (Base + Periodic Variation + Random Noise + Abnormal Drift)
-        // Heart Rate (HR)
+        // 心率 (80 ~ 160)
         double hrShift = 45 + 40 * wave;
         double hr = hrBase + 5 * Math.sin(phase) + noise(1.5) + abnormal * hrShift;
-        // Body Temperature (Temp)
+
+        // 体温 (37.0 ~ 39.4)
         double tempShift = 1.5 + 1.2 * wave;
         double temp = tempBase + 0.05 * Math.sin(phase / 3) + noise(0.03) + abnormal * tempShift;
-        // Respiratory Rate (RR)
+
+        // 呼吸 (16 ~ 36)
         double rrShift = 12 + 10 * wave;
         double rr = rrBase + 1.5 * Math.sin(phase / 2) + noise(0.4) + abnormal * rrShift;
-        // Systolic BP
+
+        // 血压
         double sysShift = 40 + 35 * wave;
         double sys = sysBase + 8 * Math.sin(phase / 4) + noise(2.0) + abnormal * sysShift;
-        // Diastolic BP
+
         double diaShift = 25 + 20 * wave;
         double dia = diaBase + 5 * Math.sin(phase / 4) + noise(1.5) + abnormal * diaShift;
-        // Form ECG
+
         double ecg = syntheticEcg(hr, phase);
 
-        // Create phase for the next sample
         phase += 0.20;
 
         return new VitalSample(nowMs, temp, hr, rr, sys, dia, ecg);
@@ -83,8 +104,7 @@ public class SimpleVitalSimulator implements Simulator {
     }
 
     private double syntheticEcg(double hr, double p) {
-        double t = (p % (2 * Math.PI)) / (2 * Math.PI);  // 0..1
-        // simple P-QRS-T wave model
+        double t = (p % (2 * Math.PI)) / (2 * Math.PI);
         double spike = Math.exp(-Math.pow((t - 0.5) * 20, 2));
         if (spike < 0.01) spike = 0;
         return spike * 2.0 - 0.5 + noise(0.05);
