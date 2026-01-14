@@ -60,13 +60,15 @@ public class SimpleVitalSimulator implements Simulator {
     public VitalSample nextSample(long nowMs) {
         // --- 1. 自动恶化检查 ---
         // 如果这个病人注定要生病，且当前是 NORMAL，且时间已经过了 20 秒
+        /*
         if (isDestinedToGetSick && mode == SimulationMode.NORMAL) {
             long elapsedSeconds = (nowMs - createdAt) / 1000;
             if (elapsedSeconds > 20) { // 20秒后自动发病
-                mode = SimulationMode.ABNORMAL;
-                System.out.println("⚠️ Patient " + patient.patientId() + " condition deteriorating!");
+                //mode = SimulationMode.ABNORMAL;
+                //System.out.println("⚠️ Patient " + patient.patientId() + " condition deteriorating!");
             }
         }
+         */
 
         // --- 2. 下面是之前写的正弦波漂移逻辑 (保持不变) ---
 
