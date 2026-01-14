@@ -11,8 +11,8 @@ import java.io.IOException;
 import java.sql.SQLException;
 import java.util.List;
 
-@WebServlet(urlPatterns = {"/api/minutes/range"})
-public class MinutesApiServlet extends HttpServlet {
+@WebServlet(urlPatterns = {"/api/minutes/latest"})
+public class MinutesLatestApiServlet extends HttpServlet {
 
     private final MinuteAverageDao dao = new MinuteAverageDao();
 
@@ -21,52 +21,50 @@ public class MinutesApiServlet extends HttpServlet {
         resp.setContentType("application/json; charset=utf-8");
 
         String patientId = req.getParameter("patientId");
-        String fromMsStr = req.getParameter("fromMs");
-        String toMsStr = req.getParameter("toMs");
+        String limitStr  = req.getParameter("limit");
 
-        if (patientId == null || fromMsStr == null || toMsStr == null) {
+        if (patientId == null || limitStr == null) {
             resp.setStatus(400);
-            resp.getWriter().write("{\"error\":\"missing params: patientId, fromMs, toMs\"}");
+            resp.getWriter().write("{\"error\":\"missing params: patientId, limit\"}");
             return;
         }
 
-        long fromMs, toMs;
+        int limit;
         try {
-            fromMs = Long.parseLong(fromMsStr);
-            toMs = Long.parseLong(toMsStr);
+            limit = Integer.parseInt(limitStr);
+            if (limit <= 0) limit = 60;
+            if (limit > 1000) limit = 1000;
         } catch (Exception e) {
             resp.setStatus(400);
-            resp.getWriter().write("{\"error\":\"fromMs/toMs must be long\"}");
+            resp.getWriter().write("{\"error\":\"limit must be int\"}");
             return;
         }
 
-        final List<MinuteRecord> list;
+        List<MinuteRecord> list;
         try {
-            list = dao.range(patientId, fromMs, toMs);
+            list = dao.latest(patientId, limit);
         } catch (SQLException e) {
             resp.setStatus(500);
-            resp.getWriter().write("{\"error\":\"db error: " + escape(e.getMessage()) + "\"}");
+            resp.getWriter().write("{\"error\":\"MinuteAverageDao.latest failed: " + escape(e.getMessage()) + "\"}");
             return;
         }
 
         StringBuilder sb = new StringBuilder();
         sb.append("{\"patientId\":\"").append(escape(patientId)).append("\",");
-        sb.append("\"fromMs\":").append(fromMs).append(",");
-        sb.append("\"toMs\":").append(toMs).append(",");
+        sb.append("\"limit\":").append(limit).append(",");
         sb.append("\"minutes\":[");
 
         for (int i = 0; i < list.size(); i++) {
-            MinuteRecord r = list.get(i);
+            MinuteRecord m = list.get(i);
             if (i > 0) sb.append(",");
-
             sb.append("{");
-            sb.append("\"minuteStartMs\":").append(r.minuteStartMs()).append(",");
-            sb.append("\"avgTemp\":").append(r.avgTemp()).append(",");
-            sb.append("\"avgHr\":").append(r.avgHR()).append(",");
-            sb.append("\"avgRr\":").append(r.avgRR()).append(",");
-            sb.append("\"avgSys\":").append(r.avgSys()).append(",");
-            sb.append("\"avgDia\":").append(r.avgDia()).append(",");
-            sb.append("\"n\":").append(r.sampleCount());
+            sb.append("\"minuteStartMs\":").append(m.minuteStartMs()).append(",");
+            sb.append("\"avgTemp\":").append(m.avgTemp()).append(",");
+            sb.append("\"avgHr\":").append(m.avgHR()).append(",");
+            sb.append("\"avgRr\":").append(m.avgRR()).append(",");
+            sb.append("\"avgSys\":").append(m.avgSys()).append(",");
+            sb.append("\"avgDia\":").append(m.avgDia()).append(",");
+            sb.append("\"n\":").append(m.sampleCount());
             sb.append("}");
         }
 

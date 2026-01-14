@@ -9,7 +9,17 @@ import java.util.List;
 
 public final class MinuteAverageDao {
 
+    private static boolean hasPgEnv() {
+        return System.getenv("PGHOST") != null
+                && System.getenv("PGPORT") != null
+                && System.getenv("PGDATABASE") != null
+                && System.getenv("PGUSER") != null
+                && System.getenv("PGPASSWORD") != null;
+    }
+
     public void upsert(String patientId, MinuteRecord r) throws SQLException {
+        if (!hasPgEnv()) return;
+
         String sql =
                 "INSERT INTO minute_averages " +
                         "(patient_id, minute_start_ms, avg_temp, avg_hr, avg_rr, avg_sys, avg_dia, sample_count) " +
@@ -37,8 +47,10 @@ public final class MinuteAverageDao {
         }
     }
 
-    // 最常用：取最近 N 条 minute record（给 UI/客户端用）
     public List<MinuteRecord> latest(String patientId, int limit) throws SQLException {
+        List<MinuteRecord> out = new ArrayList<>();
+        if (!hasPgEnv()) return out;
+
         String sql =
                 "SELECT minute_start_ms, avg_temp, avg_hr, avg_rr, avg_sys, avg_dia, sample_count " +
                         "FROM minute_averages " +
@@ -46,7 +58,6 @@ public final class MinuteAverageDao {
                         "ORDER BY minute_start_ms DESC " +
                         "LIMIT ?";
 
-        List<MinuteRecord> out = new ArrayList<>();
         try (Connection c = Db.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
 
@@ -70,15 +81,16 @@ public final class MinuteAverageDao {
         return out;
     }
 
-    // 可选：按时间范围查（做日报/回放更正规）
     public List<MinuteRecord> range(String patientId, long fromMs, long toMs) throws SQLException {
+        List<MinuteRecord> out = new ArrayList<>();
+        if (!hasPgEnv()) return out;
+
         String sql =
                 "SELECT minute_start_ms, avg_temp, avg_hr, avg_rr, avg_sys, avg_dia, sample_count " +
                         "FROM minute_averages " +
                         "WHERE patient_id = ? AND minute_start_ms >= ? AND minute_start_ms <= ? " +
                         "ORDER BY minute_start_ms ASC";
 
-        List<MinuteRecord> out = new ArrayList<>();
         try (Connection c = Db.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
 

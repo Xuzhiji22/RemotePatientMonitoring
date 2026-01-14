@@ -38,14 +38,25 @@ tasks.register('stage') {
 
 dependencies {
 
+    implementation 'com.sun.mail:javax.mail:1.6.2'
+
     compileOnly 'javax.servlet:javax.servlet-api:4.0.1'
 
     testImplementation platform('org.junit:junit-bom:5.10.0')
     testImplementation 'org.junit.jupiter:junit-jupiter'
     implementation 'org.postgresql:postgresql:42.7.3'
     implementation 'com.google.code.gson:gson:2.11.0'
+    implementation 'org.eclipse.jetty:jetty-jndi:9.4.24.v20191120'
+
+    implementation 'com.zaxxer:HikariCP:5.1.0'
+    runtimeOnly 'org.postgresql:postgresql:42.7.3'
 
 }
+
+gretty {
+    jvmArgs = ['-Djava.naming.factory.initial=org.eclipse.jetty.jndi.InitialContextFactory']
+}
+
 
 test {
     useJUnitPlatform()

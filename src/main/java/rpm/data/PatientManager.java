@@ -1,6 +1,7 @@
 package rpm.data;
 
 import rpm.alert.AlertEngine;
+import rpm.dao.PatientDao;
 import rpm.model.Patient;
 import rpm.sim.SimpleVitalSimulator;
 import rpm.sim.SimulationMode;
@@ -10,8 +11,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
-import rpm.dao.PatientDao;
 
 public class PatientManager {
 
@@ -71,8 +70,8 @@ public class PatientManager {
         stores.put(p.patientId(), new PatientDataStore(maxSeconds, sampleHz));
 
         SimpleVitalSimulator sim = new SimpleVitalSimulator(p);
-        sim.setMode(index % 5 == 0 ? SimulationMode.ABNORMAL : SimulationMode.NORMAL);
-        sim.setHeartRateBase(65 + index * 3);
+        sim.setMode(SimulationMode.NORMAL);
+        sim.setHeartRateBase(65 + (index % 10) * 2);
         simulators.put(p.patientId(), sim);
 
         aggregators.put(p.patientId(), new MinuteAggregator(alertEngine));
