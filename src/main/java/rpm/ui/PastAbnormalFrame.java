@@ -17,6 +17,7 @@ import java.util.List;
 
 public class PastAbnormalFrame extends JFrame {
 
+    private static final long serialVersionUID = 1L;
     private final Patient patient;
     private final PatientHistoryStore history;
     private final AlertEngine alertEngine;

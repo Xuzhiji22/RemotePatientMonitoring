@@ -16,6 +16,7 @@ import java.util.List;
  * - If PG* env vars are missing (local run), NO-OP instead of throwing.
  * - On Tsuru (cloud), PG* env vars exist -> normal DB persistence.
  */
+
 public final class PatientDao {
 
     private static boolean hasPgEnv() {

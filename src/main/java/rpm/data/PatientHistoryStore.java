@@ -1,5 +1,16 @@
 package rpm.data;
 
+/**
+ * Stores time-series history used by the UI:
+ * <ul>
+ *   <li>Latest samples for each vital sign (ring buffers for plotting).</li>
+ *   <li>Minute-averaged records (used for history view and reports).</li>
+ *   <li>Abnormal events (used for 'past abnormal' view and reports).</li>
+ * </ul>
+ *
+ * <p>This store is in-memory. Persistence is handled separately (DAO/cloud sync).
+ */
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -72,7 +83,7 @@ public class PatientHistoryStore {
             long t = e.timestampMs();
             if (t >= fromMs && t <= toMs) out.add(e);
         }
-        // UI一般希望最新在上：倒序
+
         Collections.reverse(out);
         return out;
     }

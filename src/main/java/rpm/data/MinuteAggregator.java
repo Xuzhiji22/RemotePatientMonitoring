@@ -12,6 +12,7 @@ import java.util.List;
 /**
  * Aggregates incoming samples into minute-level records and detects abnormal events.
  */
+
 public class MinuteAggregator {
     private final AlertEngine alertEngine;
 

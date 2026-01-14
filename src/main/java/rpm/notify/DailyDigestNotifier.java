@@ -53,7 +53,7 @@ public class DailyDigestNotifier {
 
         // If there's no data yet today, you don't have to post; can also post every day.
         if (statsByPatient.isEmpty()) {
-            lastSentDate = today; // 防止重复尝试
+            lastSentDate = today;
             return;
         }
 
@@ -71,8 +71,8 @@ public class DailyDigestNotifier {
         AlertLevel lv = alertEngine.eval(type, value);
         if (lv == AlertLevel.NORMAL) return;
 
-        st.abnormalMinutes++; // 这一分钟里至少有一个 abnormal（粗略统计：每 abnormal 计一次）
-        // 如果你想“每分钟最多算一次 abnormalMinutes”，可以做去重；见下方备注
+        st.abnormalMinutes++;
+
 
         if (lv == AlertLevel.WARNING) st.warningCount++;
         if (lv == AlertLevel.URGENT) st.urgentCount++;

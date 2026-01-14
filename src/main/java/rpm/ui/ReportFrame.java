@@ -19,6 +19,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Objects;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
@@ -28,11 +29,9 @@ import com.google.gson.JsonParser;
 
 public class ReportFrame extends JFrame {
 
+
+    private static final long serialVersionUID = 1L;
     private final Patient patient;
-    @SuppressWarnings("unused")
-    private final PatientHistoryStore history;
-    @SuppressWarnings("unused")
-    private final AlertEngine alertEngine;
     private final JFrame back;
 
     private final JTextArea textArea = new JTextArea();
@@ -45,9 +44,9 @@ public class ReportFrame extends JFrame {
 
 
     public ReportFrame(Patient patient, PatientHistoryStore history, AlertEngine alertEngine, JFrame back) {
-        this.patient = patient;
-        this.history = history;
-        this.alertEngine = alertEngine;
+        this.patient = Objects.requireNonNull(patient);
+        Objects.requireNonNull(history); // kept for API compatibility / future use
+        Objects.requireNonNull(alertEngine); // kept for API compatibility / future use
         this.back = back;
 
         setTitle("Daily Report - " + patient.patientId());

@@ -15,6 +15,7 @@ import java.awt.event.WindowEvent;
 
 public class LoginFrame extends JFrame {
 
+    private static final long serialVersionUID = 1L;
     private final AuthService auth;
     private final PatientManager pm;
     private final AlertEngine alertEngine;

@@ -1,5 +1,11 @@
 package rpm.web;
 
+/**
+ * Cloud API endpoint for reading minute-averaged vital statistics.
+ *
+ * <p>Example: {@code GET /api/minutes/latest?patientId=P001&limit=1000}
+ */
+
 import rpm.dao.MinuteAverageDao;
 import rpm.data.MinuteRecord;
 

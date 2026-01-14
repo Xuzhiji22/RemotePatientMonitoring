@@ -1,5 +1,13 @@
 package rpm;
 
+/**
+ * Desktop entry point for the Remote Patient Monitoring (RPM) system.
+ *
+ * <p>This class wires together configuration, storage, alert engine and the Swing UI.
+ * It also performs a lightweight "cloud/DB availability" probe so the UI can gracefully
+ * fall back to local-only mode if the cloud is unavailable.
+ */
+
 import rpm.alert.AlertEngine;
 import rpm.auth.AuthService;
 import rpm.auth.UserStore;

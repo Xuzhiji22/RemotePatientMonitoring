@@ -1,5 +1,16 @@
 package rpm.data;
 
+/**
+ * Coordinates simulation, storage and alert evaluation for a single patient.
+ *
+ * <p>Responsibilities:
+ * <ul>
+ *   <li>Receive simulated (or ingested) samples for each vital sign.</li>
+ *   <li>Push samples into in-memory ring buffers for real-time plotting.</li>
+ *   <li>Aggregate per-minute averages and record abnormal events.</li>
+ * </ul>
+ */
+
 import rpm.alert.AlertEngine;
 import rpm.dao.PatientDao;
 import rpm.model.Patient;
@@ -36,7 +47,7 @@ public class PatientManager {
         }
     }
 
-    // 你原来有 getPatients() 的话，建议返回 copy，避免 UI/线程误改
+
     public synchronized List<Patient> getPatients() {
         return List.copyOf(patients);
     }
@@ -62,7 +73,7 @@ public class PatientManager {
         try {
             patientDao.upsert(p);
         } catch (Exception e) {
-            // 本地没绑 PG 环境变量也能继续跑，不要让它直接炸掉
+
             e.printStackTrace();
         }
 

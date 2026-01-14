@@ -1,5 +1,11 @@
 package rpm.web;
 
+/**
+ * Cloud ingestion endpoint for raw vital samples posted from clients.
+ *
+ * <p>This is typically called by the sync service rather than manually.
+ */
+
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import rpm.dao.VitalSampleDao;

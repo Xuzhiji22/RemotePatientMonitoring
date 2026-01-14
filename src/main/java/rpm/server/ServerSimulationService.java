@@ -47,7 +47,6 @@ public final class ServerSimulationService {
 
                 VitalSample sample = sim.nextSample(now);
 
-                // 写 DB 在这里做（保证 simulator 也可以只负责生成）
                 try {
                     vitalDao.insert(pid, sample);
                 } catch (Exception ignored) {
