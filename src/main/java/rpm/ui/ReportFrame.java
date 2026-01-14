@@ -24,7 +24,6 @@ import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import rpm.model.VitalType;
 
 
 public class ReportFrame extends JFrame {
@@ -274,22 +273,26 @@ public class ReportFrame extends JFrame {
                     stats.meanDia(), stats.minDia, stats.maxDia));
         }
 
-        // -------- Parse abnormal JSON -> highlights + de-dup counts --------
+        // -------- Parse abnormal JSON -> highlights --------
         List<AbnormalEvent> abns = parseAbnormalEvents(abnormalJson);
         sb.append("--- Abnormal Highlights (latest first) ---\n");
 
         int shown = 0;
+        int inWindow = 0;
+        int urgent = 0;
+        int warning = 0;
 
-        // 统计：按 “minute + vitalType” 去重
-        // key = minuteIndex (ts / 60000)
-        // value = 该分钟每个 vitalType 的最高级别（URGENT 覆盖 WARNING）
-        java.util.Map<Long, java.util.EnumMap<VitalType, AlertLevel>> dedup = new java.util.HashMap<>();
 
         for (AbnormalEvent a : abns) {
             long ts = a.timestampMs();
             if (ts < fromMs || ts > toMs) continue;
 
-            // ---- highlights（仍然按事件显示，不去重，便于老师看到“最新发生了什么”）----
+            inWindow++;
+            AlertLevel lvl = a.level();
+            if (lvl == AlertLevel.URGENT) urgent++;
+            if (lvl == AlertLevel.WARNING) warning++;
+
+
             if (shown < MAX_ABNORMAL_LINES) {
                 sb.append(fmt.format(Instant.ofEpochMilli(ts)))
                         .append(" | ").append(a.level())
@@ -299,52 +302,17 @@ public class ReportFrame extends JFrame {
                         .append("\n");
                 shown++;
             }
-
-            // ---- counts：每分钟去重（minute + vitalType）----
-            long minuteKey = ts / 60_000L;
-
-            java.util.EnumMap<VitalType, AlertLevel> perVital =
-                    dedup.computeIfAbsent(minuteKey, k -> new java.util.EnumMap<>(VitalType.class));
-
-            VitalType vt = a.vitalType();
-            AlertLevel newLevel = a.level();
-
-            // NORMAL 不计入 abnormal（一般云端 abnormal 也不会给 NORMAL，但这里防御一下）
-            if (newLevel == AlertLevel.NORMAL) continue;
-
-            AlertLevel oldLevel = perVital.get(vt);
-            if (oldLevel == null) {
-                perVital.put(vt, newLevel);
-            } else {
-                // URGENT 覆盖 WARNING
-                if (oldLevel != AlertLevel.URGENT && newLevel == AlertLevel.URGENT) {
-                    perVital.put(vt, AlertLevel.URGENT);
-                }
-            }
         }
 
-        // 统计 dedup 后的计数
-        int urgent = 0;
-        int warning = 0;
-        int total = 0;
-
-        for (var perVital : dedup.values()) {
-            for (var lvl : perVital.values()) {
-                total++;
-                if (lvl == AlertLevel.URGENT) urgent++;
-                else if (lvl == AlertLevel.WARNING) warning++;
-            }
-        }
-
-        if (total == 0) {
+        if (inWindow == 0) {
             sb.append("No abnormal instances in this window.\n");
         }
 
-        // Overall status（按去重后的结果判断）
+        // Overall status
         sb.append("\n");
         sb.append(String.format("Overall: %s (Urgent: %d, Warning: %d, Total: %d)\n\n",
                 (urgent > 0 ? "URGENT" : (warning > 0 ? "WARNING" : "STABLE")),
-                urgent, warning, total));
+                urgent, warning, inWindow));
 
         // -------- Optional debug raw JSON --------
         if (REPORT_DEBUG_RAW_JSON) {
@@ -358,7 +326,6 @@ public class ReportFrame extends JFrame {
         sb.append("\n===== End =====\n");
         return sb.toString();
     }
-
 
     private SummaryStats parseMinutesSummary(String minutesJson, long fromMs, long toMs) {
         SummaryStats s = new SummaryStats();
