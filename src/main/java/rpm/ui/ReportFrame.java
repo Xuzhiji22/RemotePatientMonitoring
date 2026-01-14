@@ -101,7 +101,7 @@ public class ReportFrame extends JFrame {
         // Read cloud baseUrl + timeout from system.properties
         ConfigStore cfg = new ConfigStore(Paths.get("data", "system.properties"));
         final String cloudBaseUrl = cfg.getString("cloud.baseUrl", "https://bioeng-rpm-app.impaas.uk");
-        final int cloudLimit = cfg.getInt("cloud.report.limit", 2000);
+        final int cloudLimit = cfg.getInt("cloud.report.limit", 20000);
 
         // UI state
         if (btnGen != null) btnGen.setEnabled(false);

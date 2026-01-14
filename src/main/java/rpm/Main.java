@@ -20,6 +20,8 @@ import rpm.ui.LoginFrame;
 import rpm.db.Db;
 import rpm.cloud.CloudSyncService;
 import rpm.notify.SmtpEmailService;
+import java.util.concurrent.atomic.AtomicBoolean;
+
 
 
 
@@ -118,13 +120,17 @@ public class Main {
 
         System.out.println("[Main] cloud.sync.enabled=" + cloudSyncEnabled + " | cloud.baseUrl=" + cloudBaseUrl);
 
-        // If DB is not available locally, also silence audio to avoid noisy runs
-        final boolean audioEnabled = dbEnabled ? audioEnabledFromCfg : false;
-        if (!dbEnabled && audioEnabledFromCfg) {
-            System.out.println("[Main] DB not available -> auto-disabling audio to avoid repeated beeps.");
+        // Audio should NOT depend on DB connectivity (requirement: audio alarms + heartbeat sound)
+        final boolean audioEnabled = audioEnabledFromCfg;
+
+        if (!dbEnabled) {
+            System.out.println("[Main] DB not available -> running without DB. (Audio remains " + audioEnabled + ")");
         }
 
         final AudioAlertService audioAlert = new AudioAlertService(audioEnabled, heartbeatEnabled);
+        final AtomicBoolean audioArmed = new AtomicBoolean(false); // NEW: only enable sound after login
+
+
 
         // DAO: create only if DB enabled
         final MinuteAverageDao minuteDao = dbEnabled ? new MinuteAverageDao() : null;
@@ -158,13 +164,18 @@ public class Main {
                     MinuteAggregator agg = pm.aggregatorOf(id);
                     MinuteAggregator.AggregationResult result = agg.onSample(sample);
 
-                    // Audio: abnormal beeps + optional heartbeat
-                    audioAlert.onAbnormalEvents(result.abnormalEvents(), now);
-                    audioAlert.onHeartRate(sample.heartRate(), now);
+                    // Audio should only run after user login (avoid beeping on startup/login screen)
+                    if (audioArmed.get()) {
+                        audioAlert.onAbnormalEvents(result.abnormalEvents(), now);
+                        audioAlert.onHeartRate(sample.heartRate(), now);
+                    }
+
 
                     // 1) abnormal events: always try cloud upload; DB write only if enabled
                     if (result.abnormalEvents() != null && !result.abnormalEvents().isEmpty()) {
                         for (var e : result.abnormalEvents()) {
+
+                            pm.historyOf(id).addAbnormalEvent(e);
 
                             // cloud (non-blocking)
                             cloudSync.enqueueAbnormal(id, e);
@@ -233,7 +244,16 @@ public class Main {
         SwingUtilities.invokeLater(new Runnable() {
             @Override
             public void run() {
-                LoginFrame login = new LoginFrame(pm, alertEngine, authService, userStore, configStore);
+                LoginFrame login = new LoginFrame(
+                        pm, alertEngine, authService, userStore, configStore,
+                        () -> audioArmed.set(true),      // login -> arm
+                        () -> {                          // logout/close -> disarm
+                            audioArmed.set(false);
+                            audioAlert.reset();          // 下面我会给你 AudioAlertService 的 reset()
+                        }
+                );
+
+
                 login.setVisible(true);
             }
         });

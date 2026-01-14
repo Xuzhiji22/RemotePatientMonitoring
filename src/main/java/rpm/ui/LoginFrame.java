@@ -10,6 +10,8 @@ import rpm.data.PatientManager;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 
 public class LoginFrame extends JFrame {
 
@@ -19,11 +21,16 @@ public class LoginFrame extends JFrame {
     private final UserStore userStore;
     private final ConfigStore configStore;
 
+    private final Runnable onLoginSuccess; // arm audio
+    private final Runnable onLogout;       // disarm audio
+
     public LoginFrame(PatientManager pm,
                       AlertEngine alertEngine,
                       AuthService auth,
                       UserStore userStore,
-                      ConfigStore configStore) {
+                      ConfigStore configStore,
+                      Runnable onLoginSuccess,
+                      Runnable onLogout) {
 
         super("Remote Patient Monitor - Login");
 
@@ -32,6 +39,8 @@ public class LoginFrame extends JFrame {
         this.auth = auth;
         this.userStore = userStore;
         this.configStore = configStore;
+        this.onLoginSuccess = onLoginSuccess;
+        this.onLogout = onLogout;
 
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setSize(420, 240);
@@ -59,10 +68,17 @@ public class LoginFrame extends JFrame {
             }
 
             UserAccount account = opt.get();
+
+            // Arm audio only after successful login
+            if (onLoginSuccess != null) {
+                try { onLoginSuccess.run(); } catch (Exception ex) {
+                    System.err.println("[LoginFrame] onLoginSuccess failed: " + ex.getMessage());
+                }
+            }
+
             route(account.role());
         });
 
-        // Login with Enter key allowed
         passField.addActionListener(e -> loginBtn.doClick());
 
         JPanel form = new JPanel(new GridBagLayout());
@@ -95,18 +111,28 @@ public class LoginFrame extends JFrame {
     private void route(UserRole role) {
         this.setVisible(false);
 
+        JFrame child;
+
         if (role == UserRole.ADMINISTRATOR) {
-            // Pass the userStore / configStore in
-            AdminFrame af = new AdminFrame(pm, alertEngine, this, userStore, configStore);
-            af.setVisible(true);
-
+            child = new AdminFrame(pm, alertEngine, this, userStore, configStore);
         } else if (role == UserRole.DOCTOR) {
-            DoctorOverviewFrame ov = new DoctorOverviewFrame(pm, alertEngine, this);
-            ov.setVisible(true);
-
-        } else if (role == UserRole.NURSE) {
-            NurseOverviewFrame ov = new NurseOverviewFrame(pm, alertEngine, this);
-            ov.setVisible(true);
+            child = new DoctorOverviewFrame(pm, alertEngine, this);
+        } else {
+            child = new NurseOverviewFrame(pm, alertEngine, this);
         }
+
+        // When user closes/leaves the child window, disarm audio
+        child.addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosed(WindowEvent e) {
+                if (onLogout != null) onLogout.run();
+            }
+            @Override
+            public void windowClosing(WindowEvent e) {
+                if (onLogout != null) onLogout.run();
+            }
+        });
+
+        child.setVisible(true);
     }
 }

@@ -4,7 +4,6 @@ import rpm.alert.AlertEngine;
 import rpm.dao.PatientDao;
 import rpm.model.Patient;
 import rpm.sim.SimpleVitalSimulator;
-import rpm.sim.SimulationMode;
 import rpm.sim.Simulator;
 
 import java.util.ArrayList;
@@ -70,7 +69,7 @@ public class PatientManager {
         stores.put(p.patientId(), new PatientDataStore(maxSeconds, sampleHz));
 
         SimpleVitalSimulator sim = new SimpleVitalSimulator(p);
-        sim.setMode(SimulationMode.NORMAL);
+        //sim.setMode(SimulationMode.NORMAL);
         sim.setHeartRateBase(65 + (index % 10) * 2);
         simulators.put(p.patientId(), sim);
 
