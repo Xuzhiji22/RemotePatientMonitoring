@@ -93,15 +93,19 @@ public class PastDataFrame extends JFrame {
 
     private void reload() {
         int idx = rangeBox.getSelectedIndex();
+
         if (idx == 0) {
             records = history.getLastHours(24);
             setTitle("Past Vital Data (24h) - " + patient.patientId());
+            chart.setRangeLabel("Last 24 hours (minute averages)");
         } else if (idx == 1) {
             records = history.getLastHours(72);
             setTitle("Past Vital Data (72h) - " + patient.patientId());
+            chart.setRangeLabel("Last 72 hours (minute averages)");
         } else {
             records = history.getLastDays(7);
             setTitle("Past Vital Data (7d) - " + patient.patientId());
+            chart.setRangeLabel("Last 7 days (minute averages)");
         }
 
         if (records.isEmpty()) {
