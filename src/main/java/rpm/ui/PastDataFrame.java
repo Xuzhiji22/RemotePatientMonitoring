@@ -12,7 +12,6 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
-import java.util.function.ToDoubleFunction;
 
 public class PastDataFrame extends JFrame {
 
@@ -25,6 +24,10 @@ public class PastDataFrame extends JFrame {
 
     private List<MinuteRecord> records = List.of();
 
+    private final JComboBox<String> rangeBox = new JComboBox<>(new String[]{
+            "Last 24 Hours", "Last 72 Hours", "Last 7 Days"
+    });
+
     private final JComboBox<String> vitalBox = new JComboBox<>(new String[]{
             "Body temperature", "Heart rate", "Respiratory rate", "Systolic BP", "Diastolic BP"
     });
@@ -32,7 +35,7 @@ public class PastDataFrame extends JFrame {
     private final JSlider minuteSlider = new JSlider(0, 0, 0);
 
     public PastDataFrame(Patient patient, PatientHistoryStore history, AlertEngine alertEngine, JFrame parent) {
-        super("Past Vital Data (24h) - " + patient.patientId());
+        super("Past Vital Data - " + patient.patientId());
         this.patient = patient;
         this.history = history;
         this.alertEngine = alertEngine;
@@ -49,10 +52,19 @@ public class PastDataFrame extends JFrame {
             parent.setVisible(true);
         });
 
+        JButton refresh = new JButton("Refresh");
+        refresh.addActionListener(e -> reload());
+
         JPanel top = new JPanel(new FlowLayout(FlowLayout.LEFT, 15, 8));
         top.add(back);
+
+        top.add(new JLabel("Range:"));
+        top.add(rangeBox);
+
         top.add(new JLabel("Vital:"));
         top.add(vitalBox);
+
+        top.add(refresh);
 
         JPanel bottom = new JPanel(new BorderLayout(10, 10));
         bottom.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
@@ -68,18 +80,32 @@ public class PastDataFrame extends JFrame {
         setContentPane(root);
 
         // listeners
+        rangeBox.addActionListener(e -> reload());
         vitalBox.addActionListener(e -> applyVitalSelection());
         minuteSlider.addChangeListener(e -> applyMinuteSelection());
+
+        // default: last 24h
+        rangeBox.setSelectedIndex(0);
 
         // load data
         reload();
     }
 
     private void reload() {
-        records = history.getLast24Hours();
+        int idx = rangeBox.getSelectedIndex();
+        if (idx == 0) {
+            records = history.getLastHours(24);
+            setTitle("Past Vital Data (24h) - " + patient.patientId());
+        } else if (idx == 1) {
+            records = history.getLastHours(72);
+            setTitle("Past Vital Data (72h) - " + patient.patientId());
+        } else {
+            records = history.getLastDays(7);
+            setTitle("Past Vital Data (7d) - " + patient.patientId());
+        }
 
         if (records.isEmpty()) {
-            selectedInfo.setText("No minute records yet. Wait a bit (minute averages appear after 1 minute).");
+            selectedInfo.setText("No minute records in this range yet.");
             minuteSlider.setMinimum(0);
             minuteSlider.setMaximum(0);
             minuteSlider.setValue(0);
@@ -122,7 +148,6 @@ public class PastDataFrame extends JFrame {
         chart.repaint();
     }
 
-
     private void applyMinuteSelection() {
         if (records.isEmpty()) return;
 
@@ -136,11 +161,9 @@ public class PastDataFrame extends JFrame {
                 .atZone(ZoneId.systemDefault())
                 .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
 
-        // display all vitals for that minute (你说“可以选择每分钟” -> 选中分钟就展示该分钟的数据)
         selectedInfo.setText(String.format(
                 "Minute: %s | Temp=%.2f°C, HR=%.1f bpm, RR=%.1f rpm, Sys=%.1f, Dia=%.1f (n=%d)",
                 time, r.avgTemp(), r.avgHR(), r.avgRR(), r.avgSys(), r.avgDia(), r.sampleCount()
         ));
     }
 }
-
