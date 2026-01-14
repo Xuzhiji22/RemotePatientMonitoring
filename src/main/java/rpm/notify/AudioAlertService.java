@@ -2,7 +2,6 @@ package rpm.notify;
 
 import rpm.data.AbnormalEvent;
 import rpm.model.AlertLevel;
-import rpm.model.VitalType;
 
 import javax.sound.sampled.*;
 import java.awt.*;
@@ -12,15 +11,6 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/**
- * Audio feedback:
- * - Abnormal events: WARNING -> 1 beep, URGENT -> 3 beeps (throttled)
- * - Heartbeat: periodic beep based on HR (optional)
- *
- * Notes:
- * - Runs audio playback asynchronously so sampling loop is not blocked.
- * - Uses alert.wav if available; falls back to Toolkit.beep() if audio fails.
- */
 public class AudioAlertService {
 
     private final boolean enabled;
@@ -33,7 +23,10 @@ public class AudioAlertService {
     private long lastAbnormalBeepMs = 0;
     private final long abnormalBeepCooldownMs = 1200;
 
-    // async audio executor (single thread keeps beep order)
+    // when alarm plays, suppress heartbeat briefly to avoid overlap
+    private volatile long suppressHeartbeatUntilMs = 0;
+
+    // async executor so sampling loop is never blocked
     private final ExecutorService audioExec = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "audio-alert");
         t.setDaemon(true);
@@ -45,31 +38,48 @@ public class AudioAlertService {
         this.heartbeatEnabled = heartbeatEnabled;
     }
 
+    /** Call on logout to stop immediate “carry over” beeps */
+    public void reset() {
+        nextBeatMs = 0;
+        lastAbnormalBeepMs = 0;
+        suppressHeartbeatUntilMs = 0;
+    }
+
+    /** WARNING/URGENT: alarm sound only (distinct from heartbeat) */
     public void onAbnormalEvents(List<AbnormalEvent> events, long nowMs) {
         if (!enabled) return;
         if (events == null || events.isEmpty()) return;
 
+        // cooldown
         if (nowMs - lastAbnormalBeepMs < abnormalBeepCooldownMs) return;
         lastAbnormalBeepMs = nowMs;
 
         boolean hasUrgent = false;
         boolean hasWarning = false;
-
         for (AbnormalEvent e : events) {
-            if (e == null) continue;
+            if (e == null || e.level() == null) continue;
             if (e.level() == AlertLevel.URGENT) hasUrgent = true;
             else if (e.level() == AlertLevel.WARNING) hasWarning = true;
         }
 
+        if (!hasUrgent && !hasWarning) return;
+
+        // pause heartbeat briefly to avoid overlapping sounds
+        suppressHeartbeatUntilMs = nowMs + 1200;
+
         if (hasUrgent) {
-            beepAsync(3);
-        } else if (hasWarning) {
-            beepAsync(1);
+            playAlarmAsync(3);
+        } else {
+            playAlarmAsync(1);
         }
     }
 
+    /** Normal: heartbeat only (distinct) */
     public void onHeartRate(double hrBpm, long nowMs) {
         if (!enabled || !heartbeatEnabled) return;
+
+        // suppressed while alarm is playing
+        if (nowMs < suppressHeartbeatUntilMs) return;
 
         if (Double.isNaN(hrBpm) || hrBpm < 30 || hrBpm > 220) return;
 
@@ -81,42 +91,43 @@ public class AudioAlertService {
         }
 
         if (nowMs >= nextBeatMs) {
-            beepAsync(1);
+            playHeartbeatAsync();
             nextBeatMs = nowMs + intervalMs;
         }
     }
 
-    private void beepAsync(int times) {
+    private void playAlarmAsync(int times) {
         audioExec.submit(() -> {
             for (int i = 0; i < times; i++) {
-                boolean ok = playWavOnce("/alert.wav");
-                if (!ok) {
-                    Toolkit.getDefaultToolkit().beep();
-                }
-                try {
-                    Thread.sleep(250);
-                } catch (InterruptedException ignored) {
-                }
+                // Use /alarm.wav if available; fallback beep
+                if (!playWavOnce("/alert.wav")) Toolkit.getDefaultToolkit().beep();
+                sleepQuiet(250);
             }
         });
+    }
+
+    private void playHeartbeatAsync() {
+        audioExec.submit(() -> {
+            // Use /heartbeat.wav if available; fallback beep
+            if (!playWavOnce("/beep.wav")) Toolkit.getDefaultToolkit().beep();
+        });
+    }
+
+    private static void sleepQuiet(long ms) {
+        try { Thread.sleep(ms); } catch (InterruptedException ignored) {}
     }
 
     private boolean playWavOnce(String resourcePath) {
         try {
             InputStream is0 = getClass().getResourceAsStream(resourcePath);
-            if (is0 == null) {
-                System.err.println("[Audio] Sound not found: " + resourcePath);
-                return false;
-            }
+            if (is0 == null) return false;
 
-            // BufferedInputStream improves compatibility on some JVM/OS
             try (InputStream is = new BufferedInputStream(is0);
                  AudioInputStream audio = AudioSystem.getAudioInputStream(is)) {
 
                 Clip clip = AudioSystem.getClip();
                 clip.open(audio);
 
-                // auto-close when done
                 clip.addLineListener(ev -> {
                     if (ev.getType() == LineEvent.Type.STOP) {
                         clip.close();
@@ -127,7 +138,6 @@ public class AudioAlertService {
                 return true;
             }
         } catch (Exception e) {
-            System.err.println("[Audio] play failed: " + e.getMessage());
             return false;
         }
     }

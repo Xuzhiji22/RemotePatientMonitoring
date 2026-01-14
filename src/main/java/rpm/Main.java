@@ -20,6 +20,8 @@ import rpm.ui.LoginFrame;
 import rpm.db.Db;
 import rpm.cloud.CloudSyncService;
 import rpm.notify.SmtpEmailService;
+import java.util.concurrent.atomic.AtomicBoolean;
+
 
 
 
@@ -126,6 +128,8 @@ public class Main {
         }
 
         final AudioAlertService audioAlert = new AudioAlertService(audioEnabled, heartbeatEnabled);
+        final AtomicBoolean audioArmed = new AtomicBoolean(false); // NEW: only enable sound after login
+
 
 
         // DAO: create only if DB enabled
@@ -160,9 +164,12 @@ public class Main {
                     MinuteAggregator agg = pm.aggregatorOf(id);
                     MinuteAggregator.AggregationResult result = agg.onSample(sample);
 
-                    // Audio: abnormal beeps + optional heartbeat
-                    audioAlert.onAbnormalEvents(result.abnormalEvents(), now);
-                    audioAlert.onHeartRate(sample.heartRate(), now);
+                    // Audio should only run after user login (avoid beeping on startup/login screen)
+                    if (audioArmed.get()) {
+                        audioAlert.onAbnormalEvents(result.abnormalEvents(), now);
+                        audioAlert.onHeartRate(sample.heartRate(), now);
+                    }
+
 
                     // 1) abnormal events: always try cloud upload; DB write only if enabled
                     if (result.abnormalEvents() != null && !result.abnormalEvents().isEmpty()) {
@@ -235,7 +242,16 @@ public class Main {
         SwingUtilities.invokeLater(new Runnable() {
             @Override
             public void run() {
-                LoginFrame login = new LoginFrame(pm, alertEngine, authService, userStore, configStore);
+                LoginFrame login = new LoginFrame(
+                        pm, alertEngine, authService, userStore, configStore,
+                        () -> audioArmed.set(true),      // login -> arm
+                        () -> {                          // logout/close -> disarm
+                            audioArmed.set(false);
+                            audioAlert.reset();          // 下面我会给你 AudioAlertService 的 reset()
+                        }
+                );
+
+
                 login.setVisible(true);
             }
         });
