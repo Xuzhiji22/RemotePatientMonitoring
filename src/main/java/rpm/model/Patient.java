@@ -11,14 +11,39 @@ public final class Patient {
     private final String email;
     private final String emergencyContact;
 
-    public Patient(
-            String patientId,
-            String name,
-            int age,
-            String ward,
-            String email,
-            String emergencyContact
-    ) {
+    public Patient(String patientId,
+                   String name,
+                   int age,
+                   String ward,
+                   String email,
+                   String emergencyContact) {
+
+        if (patientId == null || patientId.isBlank()) {
+            throw new IllegalArgumentException("patientId cannot be null or empty");
+        }
+
+        if (name == null || name.isBlank()) {
+            throw new IllegalArgumentException("name cannot be null or empty");
+        }
+
+        if (age < 0) {
+            throw new IllegalArgumentException("age cannot be negative");
+        }
+
+        if (ward == null || ward.isBlank()) {
+            throw new IllegalArgumentException("ward cannot be null or empty");
+        }
+
+        if (email == null || !email.contains("@")) {
+            throw new IllegalArgumentException("email must contain @");
+        }
+
+        if (emergencyContact == null || emergencyContact.isBlank()) {
+            throw new IllegalArgumentException("emergencyContact cannot be empty");
+        }
+
+
+
         this.patientId = patientId;
         this.name = name;
         this.age = age;
@@ -26,6 +51,26 @@ public final class Patient {
         this.email = email;
         this.emergencyContact = emergencyContact;
     }
+    // Package-private constructor for tests (NO validation)
+    Patient(String patientId,
+            String name,
+            int age,
+            String ward,
+            String email,
+            String emergencyContact,
+            boolean skipValidation) {
+
+        this.patientId = patientId;
+        this.name = name;
+        this.age = age;
+        this.ward = ward;
+        this.email = email;
+        this.emergencyContact = emergencyContact;
+    }
+
+
+
+
 
     public String patientId() {
         return patientId;
@@ -55,28 +100,19 @@ public final class Patient {
     public boolean equals(Object o) {
         if (this == o) return true;
         if (!(o instanceof Patient)) return false;
-
         Patient other = (Patient) o;
-        return age == other.age()
-                && Objects.equals(patientId, other.patientId())
-                && Objects.equals(name, other.name())
-                && Objects.equals(ward, other.ward())
-                && Objects.equals(email, other.email())
-                && Objects.equals(emergencyContact, other.emergencyContact());
+        return Objects.equals(patientId, other.patientId);
     }
-
-
     @Override
     public int hashCode() {
-        return Objects.hash(
-                patientId,
-                name,
-                age,
-                ward,
-                email,
-                emergencyContact
-        );
+        return Objects.hash(patientId);
     }
+
+
+
+
+
+
 
     @Override
     public String toString() {
@@ -90,3 +126,6 @@ public final class Patient {
                 "]";
     }
 }
+
+
+

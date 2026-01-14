@@ -18,7 +18,7 @@ repositories {
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(11)
+        languageVersion = JavaLanguageVersion.of(17)
     }
 }
 
@@ -50,6 +50,9 @@ dependencies {
 
     implementation 'com.zaxxer:HikariCP:5.1.0'
     runtimeOnly 'org.postgresql:postgresql:42.7.3'
+    test {
+        useJUnitPlatform()
+    }
 
 }
 
